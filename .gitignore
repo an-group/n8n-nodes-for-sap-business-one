@@ -1,2 +1,9 @@
 dist
 node_modules
+metadata.xml
+*.local.xml
+.env
+.env.*
+!.env.example
+coverage/
+*.tgz
