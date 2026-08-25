@@ -19,7 +19,7 @@ Do not report security vulnerabilities through public GitHub issues, discussions
 Report vulnerabilities privately using one of the following methods:
 
 1. Use GitHub Private Vulnerability Reporting or open a private repository security advisory under the repository's **Security** tab.
-2. If private reporting is unavailable, contact the maintainers at `support@an-group.one`.
+2. If private reporting is unavailable, contact the maintainers at `development@an-group.one`.
 
 Include the following information where possible:
 
