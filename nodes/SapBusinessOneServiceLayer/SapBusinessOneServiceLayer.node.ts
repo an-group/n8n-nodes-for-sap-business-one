@@ -24,6 +24,12 @@ export class SapBusinessOneServiceLayer implements INodeType {
 		usableAsTool: true,
 		inputs: [NodeConnectionTypes.Main],
 		outputs: [NodeConnectionTypes.Main],
+		credentials: [
+			{
+				name: 'sapBusinessOneServiceLayerApi',
+				required: true,
+			},
+		],
 		properties: [
 			{
 				displayName: 'Operation',

@@ -130,18 +130,23 @@ These operations are planned and may not yet be available in the current develop
 
 ## Credentials
 
-SAP Business One Service Layer credentials are not yet fully implemented.
+The SAP Business One Service Layer credential is available to the Service Layer node.
 
-The planned credential configuration includes:
+It contains the following fields:
 
-- Service Layer base URL
-- Company database
-- Username
-- Password
-- Language
-- TLS certificate validation option
+- **Base URL** — Service Layer endpoint without a trailing slash, for example `https://server:50000/b1s/v2`
+- **User Name** — SAP Business One user name
+- **Password** — SAP Business One user password, stored as a protected n8n credential field
+- **Company Database** — company database name, for example `SBODEMOEN`
+- **Allow Unauthorized Certificates** — accepts self-signed or otherwise untrusted TLS certificates. Disabled by default and intended only for development environments.
 
-Credentials will be stored using the n8n credential system.
+Credentials are stored using the n8n credential system.
+
+The credential test authenticates against the Service Layer `/Login` endpoint using the configured base URL, company database, user name, and password. It honours the `Allow Unauthorized Certificates` setting and reports authentication and connection errors without exposing credential values.
+
+Every credential test opens a real Service Layer session. `/Login` is the only endpoint that can validate these credentials, an n8n credential test cannot chain a `/Logout` call, and SAP Business One sessions stay open until they time out (30 minutes by default) while counting against the licensed session limit. Repeatedly running the credential test against an instance with few available sessions will accumulate open sessions.
+
+Session reuse, session renewal, and logout handling are not yet implemented.
 
 Passwords, session cookies, and other secrets must not be included in workflow parameters, logs, issues, screenshots, or example data.
 
