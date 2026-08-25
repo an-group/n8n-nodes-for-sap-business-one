@@ -1,47 +1,63 @@
 {
-    "name": "n8n-nodes-for-sap-business-one",
-    "version": "0.1.0",
-    "description": "",
-    "license": "Apache-2.0",
-    "homepage": "",
-    "keywords": [
-        "n8n-community-node-package"
-    ],
-  "author": {
-    "name": "ANG CH AG"
-  },
-    "repository": {
-        "type": "git",
-        "url": "https://github.com/<...>/n8n-nodes-<...>.git"
-    },
-   "scripts": {
+	"name": "n8n-nodes-for-sap-business-one",
+	"version": "0.1.0",
+	"description": "Unofficial n8n community nodes for integrating with the SAP Business One Service Layer and related APIs",
+	"license": "MIT",
+	"homepage": "https://github.com/an-group/n8n-nodes-for-sap-business-one",
+	"keywords": [
+		"n8n-community-node-package",
+		"n8n",
+		"sap-business-one",
+		"service-layer",
+		"odata",
+		"erp",
+		"automation"
+	],
+	"author": {
+		"name": "Markus Kistler (ANG Schweiz AG)",
+		"email": "development@an-group.one"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/an-group/n8n-nodes-for-sap-business-one.git"
+	},
+	"bugs": {
+		"url": "https://github.com/an-group/n8n-nodes-for-sap-business-one/issues"
+	},
+	"engines": {
+		"node": ">=22.22.0"
+	},
+	"scripts": {
 		"build": "n8n-node build",
 		"build:watch": "tsc --watch",
 		"dev": "n8n-node dev",
 		"lint": "n8n-node lint",
 		"lint:fix": "n8n-node lint --fix",
 		"release": "n8n-node release",
-		"prepublishOnly": "n8n-node prerelease"
+		"prepublishOnly": "n8n-node prerelease",
+		"setup:local": "node ./scripts/setup-local-n8n.mjs",
+		"dev:local": "npm run setup:local && dotenv -e .env.local -- n8n-node dev"
 	},
-    "files": [
-        "dist"
-    ],
-    "n8n": {
-        "n8nNodesApiVersion": 1,
-        "strict": true,
-        "credentials": [],
-        "nodes": [
-            "dist/nodes/Example/Example.node.js"
-        ]
-    },
-    "devDependencies": {
-        "@n8n/node-cli": "*",
-        "eslint": "9.32.0",
-        "prettier": "3.6.2",
-        "release-it": "^19.0.4",
-        "typescript": "5.9.2"
-    },
-    "peerDependencies": {
-        "n8n-workflow": "*"
-    }
+	"files": [
+		"dist"
+	],
+	"n8n": {
+		"n8nNodesApiVersion": 1,
+		"strict": true,
+		"credentials": [],
+		"nodes": [
+			"dist/nodes/SapBusinessOneServiceLayer/SapBusinessOneServiceLayer.node.js"
+		]
+	},
+	"devDependencies": {
+		"@n8n/node-cli": "^0.42.1",
+		"dotenv-cli": "^11.0.0",
+		"eslint": "9.39.4",
+		"prettier": "3.8.3",
+		"release-it": "20.2.0",
+		"typescript": "5.9.3"
+	},
+	"peerDependencies": {
+		"n8n-workflow": "*"
+	}
 }

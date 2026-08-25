@@ -1,2 +1,42 @@
-dist
-node_modules
+# Build output
+dist/
+coverage/
+*.tgz
+
+# Dependencies
+node_modules/
+
+# Local SAP metadata and generated files
+metadata.xml
+*.local.xml
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.local-development.example.env
+
+# Local development configuration
+.local-development.env
+
+# Generated local HTTPS certificates
+cert/
+*.crt
+*.key
+*.pem
+*.pfx
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# IDE and editor files
+.vscode/
+.idea/

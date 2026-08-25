@@ -1,0 +1,13 @@
+{
+	"node": "n8n-nodes-for-sap-business-one.sapBusinessOneServiceLayer",
+	"nodeVersion": "1.0",
+	"codexVersion": "1.0",
+	"categories": ["Development", "Data & Storage"],
+	"resources": {
+		"primaryDocumentation": [
+			{
+				"url": "https://github.com/an-group/n8n-nodes-for-sap-business-one"
+			}
+		]
+	}
+}
