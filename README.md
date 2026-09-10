@@ -146,7 +146,19 @@ The credential test authenticates against the Service Layer `/Login` endpoint us
 
 Every credential test opens a real Service Layer session. `/Login` is the only endpoint that can validate these credentials, an n8n credential test cannot chain a `/Logout` call, and SAP Business One sessions stay open until they time out (30 minutes by default) while counting against the licensed session limit. Repeatedly running the credential test against an instance with few available sessions will accumulate open sessions.
 
-Session reuse, session renewal, and logout handling are not yet implemented.
+### Session handling
+
+The package manages Service Layer sessions internally. It authenticates once per credential, caches the resulting session in memory, and reuses it for subsequent requests.
+
+- The session is created with `POST /Login` and identified by the `B1SESSION` cookie. `ROUTEID` is preserved when the Service Layer returns one, and updated if a later response re-routes the session.
+- The server-provided `SessionTimeout` is treated as an idle timeout, measured from the last successful request. No session lifetime is assumed when the Service Layer does not report one; such a session is only discarded once the Service Layer rejects it.
+- Concurrent requests using the same credential share a single login instead of opening one licensed session each.
+- A session that the Service Layer reports as invalid is discarded, and the failed request is retried once after a new login.
+- Editing the credential replaces its cached session rather than leaving a stale one behind.
+- Sessions are held per n8n process. In queue mode each worker keeps its own session, so one credential can hold up to one licensed session per worker. Sessions are not persisted across restarts.
+- The session is never exposed as a node parameter, a credential field, or node output, and session cookies are kept out of logs and error messages.
+
+Logout handling is not yet implemented. No node operation uses this session layer yet; it is the foundation for the planned Service Layer operations listed above.
 
 Passwords, session cookies, and other secrets must not be included in workflow parameters, logs, issues, screenshots, or example data.
 
