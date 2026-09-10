@@ -25,7 +25,7 @@
 		"url": "https://github.com/an-group/n8n-nodes-for-sap-business-one/issues"
 	},
 	"engines": {
-		"node": ">=22.22.0"
+		"node": ">=24.0.0"
 	},
 	"scripts": {
 		"build": "n8n-node build",
@@ -53,6 +53,7 @@
 	},
 	"devDependencies": {
 		"@n8n/node-cli": "^0.42.1",
+		"@types/node": "^24.13.3",
 		"dotenv-cli": "^11.0.0",
 		"eslint": "9.39.4",
 		"prettier": "3.8.3",
