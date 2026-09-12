@@ -18,10 +18,10 @@ export class SapBusinessOneServiceLayerApi implements ICredentialType {
 			name: 'baseUrl',
 			type: 'string',
 			default: '',
-			placeholder: 'https://myserver.com:50000/b1s/v2',
+			placeholder: 'https://myserver.com:50000',
 			required: true,
 			description:
-				'Service Layer endpoint without trailing slash (e.g. https://server:50000/b1s/v2)',
+				'Service Layer host and port, without a path or trailing slash (e.g. https://server:50000). The /b1s/v2 API path is added automatically; only the Service Layer v2 API is supported',
 		},
 		{
 			displayName: 'User Name',
@@ -61,7 +61,7 @@ export class SapBusinessOneServiceLayerApi implements ICredentialType {
 
 	test: ICredentialTestRequest = {
 		request: {
-			baseURL: '={{$credentials.baseUrl}}',
+			baseURL: '={{$credentials.baseUrl.replace(/\\/+$/, "") + "/b1s/v2"}}',
 			url: '/Login',
 			method: 'POST',
 			body: {

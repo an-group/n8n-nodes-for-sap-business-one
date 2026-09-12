@@ -1,17 +1,12 @@
-import type {
-	IDataObject,
-	IExecuteFunctions,
-	IHttpRequestOptions,
-	IN8nHttpFullResponse,
-} from 'n8n-workflow';
+import type { IDataObject, IHttpRequestOptions, IN8nHttpFullResponse } from 'n8n-workflow';
 import { NodeApiError } from 'n8n-workflow';
 
 import {
+	buildServiceLayerBaseUrl,
 	ensureSession,
 	extractSapErrorCode,
 	getSetCookieHeader,
 	getTransportErrorDescription,
-	normalizeBaseUrl,
 	parseSetCookieValue,
 	sanitizeServiceLayerError,
 	sanitizeTransportError,
@@ -22,7 +17,12 @@ import {
 	invalidateSession,
 	touchSession,
 } from './sessionStore';
-import type { ServiceLayerCredentials, ServiceLayerResponse, ServiceLayerSession } from './types';
+import type {
+	ServiceLayerCredentials,
+	ServiceLayerRequestContext,
+	ServiceLayerResponse,
+	ServiceLayerSession,
+} from './types';
 
 /**
  * Request options a caller may supply. Transport and authentication concerns are
@@ -86,7 +86,7 @@ export function buildAuthenticatedHeaders(
 }
 
 async function sendWithSession(
-	this: IExecuteFunctions,
+	this: ServiceLayerRequestContext,
 	credentials: ServiceLayerCredentials,
 	session: ServiceLayerSession,
 	options: ServiceLayerRequestOptions,
@@ -94,7 +94,7 @@ async function sendWithSession(
 	try {
 		return (await this.helpers.httpRequest({
 			...options,
-			baseURL: normalizeBaseUrl(credentials.baseUrl),
+			baseURL: buildServiceLayerBaseUrl(credentials.baseUrl),
 			headers: buildAuthenticatedHeaders(options.headers, session),
 			skipSslCertificateValidation: credentials.ignoreSslIssues,
 			returnFullResponse: true,
@@ -120,7 +120,7 @@ async function sendWithSession(
  * the cache keyed to the credential rather than to its current values.
  */
 export async function serviceLayerApiRequest<T = unknown>(
-	this: IExecuteFunctions,
+	this: ServiceLayerRequestContext,
 	credentials: ServiceLayerCredentials,
 	credentialId: string | null | undefined,
 	options: ServiceLayerRequestOptions,
