@@ -111,7 +111,11 @@ Self-signed certificates are intended for local development only. Production env
 
 ## Operations
 
-The current scaffold contains a temporary test operation that verifies that the node can be built, loaded, and executed in n8n.
+The node exposes a **Resource** selector with three values: **Entity Set**, **Service Operation**, and **Custom API Call**.
+
+Only **Entity Set** currently does anything, and only at the metadata level: it authenticates, fetches and parses the connected instance's Service Layer metadata (`/$metadata`), and lets you pick an entity set (for example `BusinessPartners`, `Orders`, `Items`) from a dynamic, metadata-driven list. No operation runs against the selected entity set yet — every execution currently throws a "not implemented" error, honouring `Continue On Fail`.
+
+**Service Operation** and **Custom API Call** are scaffolding for later releases and have no fields or behaviour yet.
 
 The planned Service Layer operations include:
 
@@ -120,10 +124,10 @@ The planned Service Layer operations include:
 - Create entity
 - Update entity
 - Delete entity
+- Bound and unbound Service Layer actions and functions
 - Custom Service Layer request
 - OData query options
 - Structured SAP Business One error handling
-- Session handling
 - Webhook and event integration
 
 These operations are planned and may not yet be available in the current development version.
@@ -134,7 +138,7 @@ The SAP Business One Service Layer credential is available to the Service Layer 
 
 It contains the following fields:
 
-- **Base URL** — Service Layer endpoint without a trailing slash, for example `https://server:50000/b1s/v2`
+- **Base URL** — Service Layer host and port only, without a path or trailing slash, for example `https://server:50000`. The `/b1s/v2` API path is added automatically; only the Service Layer v2 API (OData V4 metadata) is supported — older v1-only instances are rejected with a clear error rather than silently missing functionality
 - **User Name** — SAP Business One user name
 - **Password** — SAP Business One user password, stored as a protected n8n credential field
 - **Company Database** — company database name, for example `SBODEMOEN`
@@ -158,9 +162,19 @@ The package manages Service Layer sessions internally. It authenticates once per
 - Sessions are held per n8n process. In queue mode each worker keeps its own session, so one credential can hold up to one licensed session per worker. Sessions are not persisted across restarts.
 - The session is never exposed as a node parameter, a credential field, or node output, and session cookies are kept out of logs and error messages.
 
-Logout handling is not yet implemented. No node operation uses this session layer yet; it is the foundation for the planned Service Layer operations listed above.
+Logout handling is not yet implemented. The Entity Set resource's metadata fetch (below) is currently the only caller of this session layer; it is the foundation for the planned Service Layer operations listed above.
 
 Passwords, session cookies, and other secrets must not be included in workflow parameters, logs, issues, screenshots, or example data.
+
+### Metadata handling
+
+Selecting the **Entity Set** resource fetches the connected instance's Service Layer metadata (`/$metadata`) over the same session described above, parses it, and caches the result in memory.
+
+- Metadata is cached per Service Layer instance and company database, independently of which SAP user connects — different credentials against the same base URL and company database share one cached copy.
+- The cache uses a one-hour time-to-live and collapses concurrent metadata requests into a single fetch.
+- Metadata is cached per n8n process, the same limitation described above for sessions: in queue mode, each worker fetches and caches its own copy.
+- Only the Service Layer v2 API's OData V4 metadata is supported. Older v1-only instances expose a different, incompatible metadata format — actions and functions don't exist in it at all — and are rejected with a clear error rather than silently returning an entity list with no operations.
+- Parsing failures are reported without exposing the raw metadata document, which can be large and contains customer-specific schema details.
 
 ## Compatibility
 

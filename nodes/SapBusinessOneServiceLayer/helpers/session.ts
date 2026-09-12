@@ -1,21 +1,30 @@
-import type {
-	IDataObject,
-	IExecuteFunctions,
-	IN8nHttpFullResponse,
-	JsonObject,
-} from 'n8n-workflow';
+import type { IDataObject, IN8nHttpFullResponse, JsonObject } from 'n8n-workflow';
 import { NodeApiError, NodeOperationError } from 'n8n-workflow';
 
 import { getSession, storeSession, withSingleFlightLogin } from './sessionStore';
-import type { ServiceLayerCredentials, ServiceLayerSession } from './types';
+import type {
+	ServiceLayerCredentials,
+	ServiceLayerRequestContext,
+	ServiceLayerSession,
+} from './types';
 
 const MILLISECONDS_PER_MINUTE = 60_000;
 const TRANSPORT_ERROR_CODE_PATTERN = /^[A-Z0-9_]{1,64}$/;
 const TLS_ERROR_CODE_PATTERN = /CERT|SSL|TLS/i;
 
-/** The credential asks for a URL without a trailing slash, but nothing enforces it. */
-export function normalizeBaseUrl(baseUrl: string): string {
-	return baseUrl.trim().replace(/\/+$/, '');
+/**
+ * Only the Service Layer v2 API is supported (see helpers/metadata.ts's version
+ * guard) — v1 predates Actions/Functions entirely, which this package's
+ * metadata-driven design depends on.
+ */
+const SERVICE_LAYER_API_PATH = '/b1s/v2';
+
+/**
+ * The credential only asks for the Service Layer host and port; the v2 API
+ * path is added here so it never needs to be typed (or mistyped) by the user.
+ */
+export function buildServiceLayerBaseUrl(baseUrl: string): string {
+	return baseUrl.trim().replace(/\/+$/, '') + SERVICE_LAYER_API_PATH;
 }
 
 /**
@@ -153,14 +162,14 @@ export function getTransportErrorDescription(
  * callers should go through ensureSession rather than calling this directly.
  */
 export async function loginToServiceLayer(
-	this: IExecuteFunctions,
+	this: ServiceLayerRequestContext,
 	credentials: ServiceLayerCredentials,
 ): Promise<ServiceLayerSession> {
 	let response: IN8nHttpFullResponse;
 
 	try {
 		response = (await this.helpers.httpRequest({
-			baseURL: normalizeBaseUrl(credentials.baseUrl),
+			baseURL: buildServiceLayerBaseUrl(credentials.baseUrl),
 			url: '/Login',
 			method: 'POST',
 			body: {
@@ -222,7 +231,7 @@ export async function loginToServiceLayer(
 
 /** Reuses a cached session when one is valid, otherwise logs in exactly once. */
 export async function ensureSession(
-	this: IExecuteFunctions,
+	this: ServiceLayerRequestContext,
 	key: string,
 	fingerprint: string,
 	credentials: ServiceLayerCredentials,

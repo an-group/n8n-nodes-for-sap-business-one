@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 
+import { withSingleFlight } from './singleFlight';
 import type { ServiceLayerCredentials, ServiceLayerSession, SessionCacheEntry } from './types';
 
 /**
@@ -125,19 +126,5 @@ export async function withSingleFlightLogin(
 	fingerprint: string,
 	login: () => Promise<ServiceLayerSession>,
 ): Promise<ServiceLayerSession> {
-	const flightKey = `${key}|${fingerprint}`;
-	const pending = pendingLogins.get(flightKey);
-
-	if (pending !== undefined) {
-		return await pending;
-	}
-
-	const flight = login();
-	pendingLogins.set(flightKey, flight);
-
-	try {
-		return await flight;
-	} finally {
-		pendingLogins.delete(flightKey);
-	}
+	return await withSingleFlight(pendingLogins, `${key}|${fingerprint}`, login);
 }
