@@ -33,6 +33,10 @@
 		"dev": "n8n-node dev",
 		"lint": "n8n-node lint",
 		"lint:fix": "n8n-node lint --fix",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage",
+		"typecheck": "tsc -p tsconfig.test.json",
 		"release": "n8n-node release",
 		"prepublishOnly": "n8n-node prerelease",
 		"setup:local": "node ./scripts/setup-local-n8n.mjs",
@@ -54,11 +58,13 @@
 	"devDependencies": {
 		"@n8n/node-cli": "^0.42.1",
 		"@types/node": "^24.13.3",
+		"@vitest/coverage-v8": "^4.1.11",
 		"dotenv-cli": "^11.0.0",
 		"eslint": "9.39.4",
 		"prettier": "3.8.3",
 		"release-it": "20.2.0",
-		"typescript": "5.9.3"
+		"typescript": "5.9.3",
+		"vitest": "^4.1.11"
 	},
 	"peerDependencies": {
 		"n8n-workflow": "*"
