@@ -119,13 +119,13 @@ The package uses [Vitest](https://vitest.dev/) for unit tests. The suite runs en
 ```bash
 npm test              # run the suite once
 npm run test:watch    # re-run on change
-npm run test:coverage # run with a coverage report in coverage/lcov.info
+npm run test:coverage # print a text summary and write coverage/lcov.info
 npm run typecheck     # type-check the tests against tsconfig.test.json
 ```
 
 Tests live in `test/` rather than beside the source, so they are never compiled into the published `dist/` build. `npm run typecheck` exists because of that separation: `npm run build` only sees `nodes/` and `credentials/`, and Vitest strips types without checking them, so the test sources would otherwise have no type gate at all.
 
-Coverage is written as `coverage/lcov.info` rather than an HTML report on purpose: `n8n-node build` copies every `**/*.{png,svg}` outside `dist/` and `node_modules/` into the build output, and the HTML reporter emits PNG assets that would then be published.
+Coverage output is intentionally limited to a terminal text summary plus `coverage/lcov.info` (no HTML report): `n8n-node build` copies every `**/*.{png,svg}` outside `dist/` and `node_modules/` into the build output, and the HTML reporter emits PNG assets that would then be published.
 
 Covered today: OData literal encoding, simple and composite entity keys, metadata parsing, session reuse and invalidation, concurrent login de-duplication, expired-session retry, and Entity Set CRUD request construction. Live Service Layer integration tests and end-to-end n8n workflow tests are out of scope; verification against a real instance remains manual.
 
