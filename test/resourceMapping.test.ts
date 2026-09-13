@@ -1,0 +1,279 @@
+import { NodeApiError, NodeOperationError } from 'n8n-workflow';
+import type { ResourceMapperField } from 'n8n-workflow';
+import { describe, expect, it } from 'vitest';
+
+import { getEntitySets } from '../nodes/SapBusinessOneServiceLayer/methods/loadOptions';
+import {
+	getEntityFields,
+	getEntityKeys,
+} from '../nodes/SapBusinessOneServiceLayer/methods/resourceMapping';
+import {
+	EDMX_BROKEN_ENTITY_SET,
+	EDMX_FIELD_TYPES,
+	EDMX_V1,
+	SYNTHETIC_EDMX_V4,
+} from './fixtures/metadataDocuments';
+import { createTestCredentials } from './helpers/credentials';
+import { flattenErrorText } from './helpers/errors';
+import { createHttpFake, type FakeResponse, type RouteTable } from './helpers/http';
+import { createLoadOptionsFunctions, createTestNode } from './helpers/node';
+
+const LOGIN_OK: FakeResponse = {
+	statusCode: 200,
+	body: { SessionId: 'sess-1', SessionTimeout: 30 },
+};
+
+const LOGIN_REJECTED: FakeResponse = {
+	statusCode: 401,
+	body: { error: { code: -304, message: { value: 'Invalid company or user' } } },
+};
+
+interface ScenarioOptions {
+	parameters?: Record<string, unknown>;
+	metadataXml?: string;
+	routes?: RouteTable;
+}
+
+function scenario(options: ScenarioOptions = {}) {
+	const http = createHttpFake({
+		'POST /Login': LOGIN_OK,
+		'GET /$metadata': { statusCode: 200, body: options.metadataXml ?? SYNTHETIC_EDMX_V4 },
+		...(options.routes ?? {}),
+	});
+	const { credentials, credentialId } = createTestCredentials();
+	const { context } = createLoadOptionsFunctions({
+		http,
+		credentials,
+		parameters: options.parameters,
+		node: createTestNode(credentialId),
+	});
+
+	return { http, credentials, context };
+}
+
+/** The exact shape `getEntityFields` emits for one mappable property. */
+function bodyField(id: string, type: ResourceMapperField['type']): ResourceMapperField {
+	return {
+		id,
+		displayName: id,
+		type,
+		required: false,
+		defaultMatch: false,
+		canBeUsedToMatch: false,
+		display: true,
+	};
+}
+
+/** The exact shape `getEntityKeys` emits for one key property. */
+function keyField(id: string, type: ResourceMapperField['type']): ResourceMapperField {
+	return {
+		id,
+		displayName: id,
+		type,
+		required: true,
+		defaultMatch: true,
+		canBeUsedToMatch: true,
+		display: true,
+	};
+}
+
+async function keysFor(entitySet: string, metadataXml?: string) {
+	return await getEntityKeys.call(scenario({ parameters: { entitySet }, metadataXml }).context);
+}
+
+async function fieldsFor(entitySet: string, operation: string, metadataXml?: string) {
+	return await getEntityFields.call(
+		scenario({ parameters: { entitySet, operation }, metadataXml }).context,
+	);
+}
+
+describe('getEntityKeys', () => {
+	it('maps a simple key to one required, matchable field', async () => {
+		await expect(keysFor('Orders')).resolves.toEqual({ fields: [keyField('DocEntry', 'number')] });
+	});
+
+	it('maps a composite key in metadata declaration order', async () => {
+		// The entity type declares its properties Rate, Type, Code — so this
+		// order can only have come from the <Key> block.
+		await expect(keysFor('SalesTaxAuthorities')).resolves.toEqual({
+			fields: [keyField('Type', 'number'), keyField('Code', 'string')],
+		});
+	});
+
+	it('maps a string key', async () => {
+		await expect(keysFor('Items')).resolves.toEqual({ fields: [keyField('ItemCode', 'string')] });
+	});
+
+	it('explains itself when the entity type has no key block', async () => {
+		await expect(keysFor('Reports')).resolves.toEqual({
+			fields: [],
+			emptyFieldsNotice: 'No key fields found for entity set "Reports".',
+		});
+	});
+
+	it('explains itself when the key names a property the entity type never declares', async () => {
+		await expect(keysFor('Ghosts')).resolves.toEqual({
+			fields: [],
+			emptyFieldsNotice: 'No key fields found for entity set "Ghosts".',
+		});
+	});
+
+	it('stays empty, without a notice, while no entity set is selected', async () => {
+		await expect(keysFor('')).resolves.toEqual({ fields: [] });
+
+		// n8n can hand back `undefined` before the dropdown has been populated.
+		const pending = scenario({ parameters: { entitySet: undefined } });
+
+		await expect(getEntityKeys.call(pending.context)).resolves.toEqual({ fields: [] });
+	});
+
+	it('stays empty for an entity set the metadata does not describe', async () => {
+		await expect(keysFor('NotThere')).resolves.toEqual({ fields: [] });
+	});
+});
+
+describe('getEntityFields', () => {
+	it('lists mappable properties in declaration order, excluding collections', async () => {
+		// DocumentLines is Collection(SAPB1.DocumentLine): a nested array of
+		// complex objects a flat mapper cannot represent.
+		await expect(fieldsFor('Orders', 'create')).resolves.toEqual({
+			fields: [
+				bodyField('CardCode', 'string'),
+				bodyField('DocEntry', 'number'),
+				bodyField('DocTotal', 'number'),
+			],
+		});
+	});
+
+	it('excludes the key from an update body', async () => {
+		await expect(fieldsFor('Orders', 'update')).resolves.toEqual({
+			fields: [bodyField('CardCode', 'string'), bodyField('DocTotal', 'number')],
+		});
+	});
+
+	it('excludes every part of a composite key from an update body', async () => {
+		await expect(fieldsFor('SalesTaxAuthorities', 'update')).resolves.toEqual({
+			fields: [bodyField('Rate', 'number')],
+		});
+	});
+
+	it('keeps composite key parts available on create', async () => {
+		// Some entity sets need a user-supplied key; metadata cannot tell which.
+		await expect(fieldsFor('SalesTaxAuthorities', 'create')).resolves.toEqual({
+			fields: [
+				bodyField('Rate', 'number'),
+				bodyField('Type', 'number'),
+				bodyField('Code', 'string'),
+			],
+		});
+	});
+
+	it('treats only update as key-excluding', async () => {
+		// The filter reads `operation !== 'update'`, so every other operation has
+		// to behave like create. Writing this with create/update alone would pass
+		// just as happily against an inclusion list.
+		await expect(fieldsFor('Orders', 'get')).resolves.toEqual({
+			fields: [
+				bodyField('CardCode', 'string'),
+				bodyField('DocEntry', 'number'),
+				bodyField('DocTotal', 'number'),
+			],
+		});
+	});
+
+	it('drops nothing from an update on a keyless entity', async () => {
+		await expect(fieldsFor('Reports', 'update')).resolves.toEqual({
+			fields: [bodyField('Title', 'string')],
+		});
+	});
+
+	it('maps every EDM type the Service Layer declares to a mapper field type', async () => {
+		await expect(fieldsFor('FieldTypes', 'create', EDMX_FIELD_TYPES)).resolves.toEqual({
+			fields: [
+				bodyField('Code', 'string'),
+				bodyField('Count', 'number'),
+				bodyField('Amount', 'number'),
+				// Active and Ref are pinned as current behaviour, not endorsed as
+				// correct: n8n has a 'boolean' field type (rendered as a toggle) and
+				// a Guid is not a number. Both land on 'number' because
+				// classifyEdmType exists to decide OData literal quoting, where
+				// unquoted is right for them — that answer is simply not a widget
+				// choice. Changing it is a behaviour change, out of scope here.
+				bodyField('Active', 'number'),
+				bodyField('Ref', 'number'),
+				bodyField('DueDate', 'dateTime'),
+				bodyField('Valid', 'string'),
+			],
+		});
+	});
+
+	it('returns an empty list, and no notice, when every property is filtered out', async () => {
+		await expect(fieldsFor('LineContainers', 'create', EDMX_FIELD_TYPES)).resolves.toEqual({
+			fields: [],
+		});
+
+		// The two mappers differ here deliberately: the key mapper explains the
+		// empty state, the body mapper leaves it bare.
+		await expect(keysFor('LineContainers', EDMX_FIELD_TYPES)).resolves.toEqual({
+			fields: [],
+			emptyFieldsNotice: 'No key fields found for entity set "LineContainers".',
+		});
+	});
+
+	it('never reads the operation before an entity set is selected', async () => {
+		// `parameters` deliberately omits `operation`; the fake throws on an
+		// unconfigured read, so this fails loudly if the lookup order changes.
+		const pending = scenario({ parameters: { entitySet: '' } });
+
+		await expect(getEntityFields.call(pending.context)).resolves.toEqual({ fields: [] });
+
+		const unknown = scenario({ parameters: { entitySet: 'NotThere' } });
+
+		await expect(getEntityFields.call(unknown.context)).resolves.toEqual({ fields: [] });
+	});
+
+	it('rejects metadata from the v1 API', async () => {
+		await expect(fieldsFor('Orders', 'create', EDMX_V1)).rejects.toThrow(NodeOperationError);
+	});
+
+	it('surfaces unparseable metadata as a node operation error', async () => {
+		await expect(fieldsFor('Orders', 'create', EDMX_BROKEN_ENTITY_SET)).rejects.toThrow(
+			/Could not parse Service Layer metadata/,
+		);
+	});
+
+	it('surfaces a rejected login as a node API error, without leaking', async () => {
+		const { context, credentials } = scenario({
+			parameters: { entitySet: 'Orders', operation: 'create' },
+			routes: { 'POST /Login': LOGIN_REJECTED },
+		});
+
+		const caught = await getEntityFields.call(context).catch((error: unknown) => error);
+		const text = flattenErrorText(caught);
+
+		expect(caught).toBeInstanceOf(NodeApiError);
+		// Proves the flattening found something, so the leak assertions below
+		// cannot pass against an empty string.
+		expect(text).toContain('Invalid company or user');
+		expect(text).not.toContain(credentials.password);
+		expect(text).not.toContain('B1SESSION');
+		expect(text).not.toContain(credentials.baseUrl);
+	});
+});
+
+describe('metadata reuse across the node methods', () => {
+	it('shares one fetch between the option loader and both mappers', async () => {
+		const { context, http } = scenario({
+			parameters: { entitySet: 'Orders', operation: 'create' },
+		});
+
+		await getEntitySets.call(context);
+		await getEntityKeys.call(context);
+		await getEntityFields.call(context);
+
+		// n8n re-runs these on every dropdown open and every loadOptionsDependsOn
+		// change, so this cache is what keeps the editor off the Service Layer.
+		expect(http.countFor('POST /Login')).toBe(1);
+		expect(http.countFor('GET /$metadata')).toBe(1);
+	});
+});

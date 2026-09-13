@@ -142,3 +142,44 @@ export const EDMX_EMPTY = `<?xml version="1.0" encoding="UTF-8"?>
 <edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
 </edmx:Edmx>
 `;
+
+/**
+ * An exhaustive EDM-type matrix, kept separate from `SYNTHETIC_EDMX_V4` so the
+ * document 195 existing tests already assert against stays untouched.
+ *
+ * `FieldTypes` declares one property per EDM kind the resource mapper has to
+ * classify. `LineContainers` has no `<Key>` block and nothing but a
+ * collection-valued property, which is the only way to reach an entity whose
+ * mapper field list filters down to empty.
+ */
+export const EDMX_FIELD_TYPES = `<?xml version="1.0" encoding="UTF-8"?>
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
+  <edmx:DataServices>
+    <Schema Namespace="SAPB1" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+
+      <EntityType Name="FieldType" OpenType="true">
+        <Key>
+          <PropertyRef Name="Code"/>
+        </Key>
+        <Property Name="Code" Nullable="false" Type="Edm.String"/>
+        <Property Name="Count" Type="Edm.Int32"/>
+        <Property Name="Amount" Type="Edm.Double"/>
+        <Property Name="Active" Type="Edm.Boolean"/>
+        <Property Name="Ref" Type="Edm.Guid"/>
+        <Property Name="DueDate" Type="Edm.DateTimeOffset"/>
+        <Property Name="Valid" Type="SAPB1.BoYesNoEnum"/>
+      </EntityType>
+
+      <EntityType Name="LineContainer" OpenType="true">
+        <Property Name="Lines" Type="Collection(SAPB1.DocumentLine)"/>
+      </EntityType>
+
+      <EntityContainer Name="SAPB1">
+        <EntitySet EntityType="SAPB1.FieldType" Name="FieldTypes"/>
+        <EntitySet EntityType="SAPB1.LineContainer" Name="LineContainers"/>
+      </EntityContainer>
+
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>
+`;

@@ -1,4 +1,9 @@
-import type { IExecuteFunctions, INode, INodeExecutionData } from 'n8n-workflow';
+import type {
+	IExecuteFunctions,
+	ILoadOptionsFunctions,
+	INode,
+	INodeExecutionData,
+} from 'n8n-workflow';
 
 import { SERVICE_LAYER_CREDENTIAL_NAME } from '../../nodes/SapBusinessOneServiceLayer/helpers/credentials';
 import type {
@@ -105,4 +110,65 @@ export function mapperValue(value: Record<string, string | number | boolean | nu
 		attemptToConvertTypes: false,
 		convertFieldsToString: false,
 	};
+}
+
+/** One `getCredentials` call, recorded so tests can assert how it was invoked. */
+export interface CredentialCall {
+	type: string;
+	itemIndex?: number;
+}
+
+export interface LoadOptionsFakeOptions {
+	http: HttpFake;
+	credentials: ServiceLayerCredentials;
+	parameters?: Record<string, unknown>;
+	/**
+	 * Required, unlike `ExecuteFakeOptions.node`: the credential id carried
+	 * here is what keys the session cache, so defaulting it would quietly
+	 * hand two tests the same cache slice.
+	 */
+	node: INode;
+}
+
+export interface LoadOptionsFake {
+	context: ILoadOptionsFunctions;
+	/** Every `getCredentials` call in order. */
+	readonly credentialCalls: CredentialCall[];
+}
+
+/**
+ * An `ILoadOptionsFunctions` stand-in for driving the node's `loadOptions` and
+ * `resourceMapping` methods.
+ *
+ * It implements exactly the four members those methods touch — `getNode`,
+ * `getCredentials`, `getNodeParameter`, and `helpers.httpRequest` — behind the
+ * same single `as unknown as` cast `createExecuteFunctions` uses above.
+ *
+ * `getNodeParameter` throws for a name the test did not configure, which is
+ * what proves `getEntityFields` never reads `operation` before an entity set
+ * has been picked. A configured key holding `undefined` is answered normally,
+ * so the "dropdown not yet filled" case stays reachable.
+ */
+export function createLoadOptionsFunctions(options: LoadOptionsFakeOptions): LoadOptionsFake {
+	const parameters = options.parameters ?? {};
+	const credentialCalls: CredentialCall[] = [];
+
+	const partial = {
+		getNode: () => options.node,
+		getCredentials: async (type: string, itemIndex?: number) => {
+			credentialCalls.push({ type, itemIndex });
+
+			return options.credentials;
+		},
+		getNodeParameter: (name: string): unknown => {
+			if (!(name in parameters)) {
+				throw new Error(`unexpected parameter read: ${name}`);
+			}
+
+			return parameters[name];
+		},
+		helpers: { httpRequest: options.http.httpRequest },
+	};
+
+	return { context: partial as unknown as ILoadOptionsFunctions, credentialCalls };
 }
