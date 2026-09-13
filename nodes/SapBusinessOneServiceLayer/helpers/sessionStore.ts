@@ -59,7 +59,7 @@ function getExpirySkewMs(timeoutMs: number): number {
  * `SessionTimeout` is an idle timeout, so expiry is measured from the last
  * successful use rather than from login.
  */
-export function isSessionExpired(session: ServiceLayerSession, now: number): boolean {
+function isSessionExpired(session: ServiceLayerSession, now: number): boolean {
 	if (session.timeoutMs === undefined) {
 		return false;
 	}

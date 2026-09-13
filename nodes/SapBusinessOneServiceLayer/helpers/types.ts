@@ -22,6 +22,15 @@ export type ServiceLayerRequestContext = Pick<FunctionsBase, 'getNode'> & {
 };
 
 /**
+ * A request context that can also resolve this node's credentials. Both
+ * `IExecuteFunctions` and `ILoadOptionsFunctions` satisfy it, so `execute()`
+ * and the `loadOptions`/`resourceMapping` methods share one metadata entry
+ * point (see helpers/credentials.ts).
+ */
+export type ServiceLayerCredentialContext = ServiceLayerRequestContext &
+	Pick<FunctionsBase, 'getCredentials'>;
+
+/**
  * A Service Layer session held in memory for the lifetime of the n8n process.
  *
  * Never serialise this into node output, logs, or errors: `sessionId` and

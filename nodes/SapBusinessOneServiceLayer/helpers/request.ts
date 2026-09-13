@@ -45,7 +45,7 @@ const SESSION_INVALID_ERROR_CODES = [301];
  * code, or no parseable SAP code at all. A 401 carrying a different, known code
  * is a real authorisation failure and must not trigger a redundant login.
  */
-export function isSessionExpiredResponse(statusCode: number, body: unknown): boolean {
+function isSessionExpiredResponse(statusCode: number, body: unknown): boolean {
 	if (statusCode !== 401) {
 		return false;
 	}
@@ -60,7 +60,7 @@ export function isSessionExpiredResponse(statusCode: number, body: unknown): boo
  * are not normalised by the transport, so a caller-supplied lowercase cookie
  * would add a second Cookie header rather than replace ours.
  */
-export function buildAuthenticatedHeaders(
+function buildAuthenticatedHeaders(
 	callerHeaders: IDataObject | undefined,
 	session: ServiceLayerSession,
 ): IDataObject {
@@ -163,4 +163,58 @@ export async function serviceLayerApiRequest<T = unknown>(
 	touchSession(session, Date.now());
 
 	return { body: response.body as T, statusCode: response.statusCode };
+}
+
+/** One page of a Service Layer OData collection response. */
+interface ServiceLayerCollectionPage {
+	value?: IDataObject[];
+	/**
+	 * Confirmed against a live Service Layer v2 instance: this is standard
+	 * OData V4 JSON's `@odata.nextLink` (`@`-prefixed), not the un-prefixed
+	 * `odata.nextLink` some SAP documentation implies. Absent on the last page.
+	 */
+	'@odata.nextLink'?: string;
+}
+
+/**
+ * Fetches an entity set's collection. The Service Layer defaults to a 20-row
+ * page size regardless of `$top`; asking it for a larger (or unlimited, via
+ * `0`) page size through the `Prefer: odata.maxpagesize` request header —
+ * rather than looping `$top`/`$skip` — gets everything in one round trip in
+ * the common case. `@odata.nextLink` is still followed defensively in case
+ * the requested page size is not honoured in full for a very large result
+ * set.
+ */
+export async function fetchEntityCollection(
+	this: ServiceLayerRequestContext,
+	credentials: ServiceLayerCredentials,
+	credentialId: string | null | undefined,
+	entitySetName: string,
+	limit: number | undefined,
+): Promise<IDataObject[]> {
+	const results: IDataObject[] = [];
+	const pageSizeHeaders = { Prefer: `odata.maxpagesize=${limit ?? 0}` };
+	let url: string | undefined = `/${entitySetName}`;
+
+	while (url !== undefined) {
+		const { body } = await serviceLayerApiRequest.call(this, credentials, credentialId, {
+			url,
+			method: 'GET',
+			headers: pageSizeHeaders,
+		});
+		const page = body as ServiceLayerCollectionPage;
+		const rows = page.value ?? [];
+
+		results.push(...rows);
+
+		if (limit !== undefined && results.length >= limit) {
+			return results.slice(0, limit);
+		}
+
+		// A page with no rows ends the collection even when the server still
+		// advertises a next link, so a malformed link cannot loop forever.
+		url = rows.length === 0 ? undefined : page['@odata.nextLink'];
+	}
+
+	return results;
 }
