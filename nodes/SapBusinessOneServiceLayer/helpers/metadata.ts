@@ -21,7 +21,7 @@ import type {
  * Metadata is company-wide, not user-specific, so credentials that differ only
  * by user/password share a cache entry.
  */
-export function getMetadataCacheKey(credentials: ServiceLayerCredentials): string {
+function getMetadataCacheKey(credentials: ServiceLayerCredentials): string {
 	return createHash('sha256').update(`${credentials.baseUrl}|${credentials.companyDb}`).digest('hex');
 }
 
@@ -362,7 +362,7 @@ export function parseMetadataXml(xml: string): ServiceLayerMetadata {
  * separate authentication, retry, or session logic. Session reuse and
  * expiry-retry are already handled by `serviceLayerApiRequest`.
  */
-export async function fetchMetadataXml(
+async function fetchMetadataXml(
 	this: ServiceLayerRequestContext,
 	credentials: ServiceLayerCredentials,
 	credentialId: string | null | undefined,

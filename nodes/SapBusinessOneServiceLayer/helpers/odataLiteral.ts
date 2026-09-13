@@ -35,11 +35,28 @@ export function classifyEdmType(edmType: string): OdataLiteralKind {
  * Encodes a raw value as an OData V4 literal for the given kind. Used for both
  * entity key segments and bound/unbound operation parameters, so the
  * quoting/escaping rule exists in exactly one place.
+ *
+ * A string literal is percent-encoded inside its quotes, because the value ends
+ * up in a URL path segment. `#` is the clearest case: it starts a URL fragment,
+ * so an item code like `A#B` never reaches the server at all — verified against
+ * a live instance, which answers "Unrecognized resource path" for the
+ * unencoded form and resolves the entity for the encoded one. `?` and `%` break
+ * in the same family of ways. A raw `/` turned out to be tolerated by the
+ * Service Layer's own routing, but it is still encoded here rather than relying
+ * on that.
+ *
+ * `encodeURIComponent` leaves `'` untouched, so the doubled quote stays literal
+ * (`O'Brien` → `'O''Brien'`) — which is the OData escaping form, and legal in a
+ * path segment.
+ *
+ * Numeric and datetime literals are left as-is: their characters are already
+ * URL-safe, and percent-encoding a timestamp's separators would risk a case
+ * this package cannot verify (no observed entity set has a datetime key).
  */
 export function encodeODataLiteral(rawValue: string, literalKind: OdataLiteralKind): string {
 	if (literalKind === 'numeric' || literalKind === 'datetime') {
 		return rawValue.trim();
 	}
 
-	return `'${rawValue.replace(/'/g, "''")}'`;
+	return `'${encodeURIComponent(rawValue.replace(/'/g, "''"))}'`;
 }

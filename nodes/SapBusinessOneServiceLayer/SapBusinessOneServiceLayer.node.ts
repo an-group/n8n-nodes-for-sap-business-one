@@ -1,12 +1,34 @@
 import type {
+	IDataObject,
 	IExecuteFunctions,
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
+	JsonObject,
+	ResourceMapperValue,
 } from 'n8n-workflow';
-import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
+import { NodeApiError, NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
 
+import {
+	SERVICE_LAYER_CREDENTIAL_NAME,
+	getServiceLayerCredentials,
+} from './helpers/credentials';
+import { buildEntityKeySegment } from './helpers/entityPath';
+import { getServiceLayerMetadata } from './helpers/metadata';
+import { fetchEntityCollection, serviceLayerApiRequest } from './helpers/request';
 import { getEntitySets } from './methods/loadOptions';
+import { getEntityFields, getEntityKeys } from './methods/resourceMapping';
+
+/** Reads a resource mapper parameter's resolved field values. */
+function getMappedValues(
+	context: IExecuteFunctions,
+	parameterName: string,
+	itemIndex: number,
+): IDataObject {
+	const parameter = context.getNodeParameter(parameterName, itemIndex) as ResourceMapperValue;
+
+	return (parameter.value ?? {}) as IDataObject;
+}
 
 export class SapBusinessOneServiceLayer implements INodeType {
 	description: INodeTypeDescription = {
@@ -18,7 +40,8 @@ export class SapBusinessOneServiceLayer implements INodeType {
 		},
 		group: ['transform'],
 		version: 1,
-		subtitle: '={{$parameter["resource"]}}',
+		subtitle:
+			'={{$parameter["resource"] === "entitySet" ? $parameter["operation"] + ": " + $parameter["entitySet"] : $parameter["resource"]}}',
 		description: 'Interact with the SAP Business One Service Layer',
 		defaults: {
 			name: 'SAP Business One Service Layer',
@@ -28,7 +51,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 		outputs: [NodeConnectionTypes.Main],
 		credentials: [
 			{
-				name: 'sapBusinessOneServiceLayerApi',
+				name: SERVICE_LAYER_CREDENTIAL_NAME,
 				required: true,
 			},
 		],
@@ -42,7 +65,8 @@ export class SapBusinessOneServiceLayer implements INodeType {
 					{
 						name: 'Entity Set',
 						value: 'entitySet',
-						description: 'Work with a Service Layer entity set (BusinessPartners, Orders, Items, ...)',
+						description:
+							'Work with a Service Layer entity set (BusinessPartners, Orders, Items, ...)',
 					},
 					{
 						name: 'Service Operation',
@@ -74,12 +98,128 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				description:
 					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 			},
+			{
+				displayName: 'Operation',
+				name: 'operation',
+				type: 'options',
+				noDataExpression: true,
+				displayOptions: {
+					show: {
+						resource: ['entitySet'],
+					},
+				},
+				options: [
+					{ name: 'Create', value: 'create', description: 'Create an entity', action: 'Create an entity' },
+					{ name: 'Delete', value: 'delete', description: 'Delete an entity', action: 'Delete an entity' },
+					{ name: 'Get', value: 'get', description: 'Get a single entity by its key', action: 'Get an entity' },
+					{ name: 'Get Many', value: 'getMany', description: 'Get many entities', action: 'Get many entities' },
+					{ name: 'Update', value: 'update', description: 'Update an entity', action: 'Update an entity' },
+				],
+				default: 'get',
+			},
+			{
+				displayName: 'Key Fields',
+				name: 'keyFields',
+				type: 'resourceMapper',
+				default: {
+					mappingMode: 'defineBelow',
+					value: null,
+				},
+				noDataExpression: true,
+				required: true,
+				typeOptions: {
+					loadOptionsDependsOn: ['entitySet'],
+					resourceMapper: {
+						resourceMapperMethod: 'getEntityKeys',
+						mode: 'add',
+						addAllFields: false,
+						supportAutoMap: false,
+						hideNoDataError: true,
+						fieldWords: {
+							singular: 'key field',
+							plural: 'key fields',
+						},
+					},
+				},
+				displayOptions: {
+					show: {
+						resource: ['entitySet'],
+						operation: ['get', 'update', 'delete'],
+					},
+				},
+			},
+			{
+				displayName: 'Fields',
+				name: 'entityFields',
+				type: 'resourceMapper',
+				default: {
+					mappingMode: 'defineBelow',
+					value: null,
+				},
+				noDataExpression: true,
+				required: true,
+				typeOptions: {
+					loadOptionsDependsOn: ['entitySet', 'operation'],
+					resourceMapper: {
+						resourceMapperMethod: 'getEntityFields',
+						mode: 'add',
+						addAllFields: false,
+						supportAutoMap: false,
+						hideNoDataError: true,
+						fieldWords: {
+							singular: 'field',
+							plural: 'fields',
+						},
+					},
+				},
+				displayOptions: {
+					show: {
+						resource: ['entitySet'],
+						operation: ['create', 'update'],
+					},
+				},
+			},
+			{
+				displayName: 'Return All',
+				name: 'returnAll',
+				type: 'boolean',
+				default: false,
+				noDataExpression: true,
+				displayOptions: {
+					show: {
+						resource: ['entitySet'],
+						operation: ['getMany'],
+					},
+				},
+				description: 'Whether to return all results or only up to a given limit',
+			},
+			{
+				displayName: 'Limit',
+				name: 'limit',
+				type: 'number',
+				default: 50,
+				typeOptions: {
+					minValue: 1,
+				},
+				displayOptions: {
+					show: {
+						resource: ['entitySet'],
+						operation: ['getMany'],
+						returnAll: [false],
+					},
+				},
+				description: 'Max number of results to return',
+			},
 		],
 	};
 
 	methods = {
 		loadOptions: {
 			getEntitySets,
+		},
+		resourceMapping: {
+			getEntityFields,
+			getEntityKeys,
 		},
 	};
 
@@ -88,14 +228,156 @@ export class SapBusinessOneServiceLayer implements INodeType {
 		const returnData: INodeExecutionData[] = [];
 
 		for (let itemIndex = 0; itemIndex < inputItems.length; itemIndex++) {
-			const message = 'This resource has no operations implemented yet';
+			try {
+				const resource = this.getNodeParameter('resource', itemIndex) as string;
 
-			if (this.continueOnFail()) {
-				returnData.push({ json: { error: message }, pairedItem: { item: itemIndex } });
-				continue;
+				if (resource !== 'entitySet') {
+					throw new NodeOperationError(
+						this.getNode(),
+						'This resource has no operations implemented yet',
+						{ itemIndex },
+					);
+				}
+
+				const operation = this.getNodeParameter('operation', itemIndex) as string;
+				const entitySetName = this.getNodeParameter('entitySet', itemIndex) as string;
+				const { credentials, credentialId } = await getServiceLayerCredentials.call(
+					this,
+					itemIndex,
+				);
+
+				const metadata = await getServiceLayerMetadata.call(this, credentials, credentialId);
+				const entity = metadata.entities.get(entitySetName);
+
+				if (entity === undefined) {
+					throw new NodeOperationError(
+						this.getNode(),
+						`Unknown entity set "${entitySetName}"`,
+						{ itemIndex },
+					);
+				}
+
+				if (operation === 'get') {
+					const keySegment = buildEntityKeySegment(
+						this,
+						entity,
+						getMappedValues(this, 'keyFields', itemIndex),
+					);
+					const { body } = await serviceLayerApiRequest.call(
+						this,
+						credentials,
+						credentialId,
+						{ url: `/${keySegment}`, method: 'GET' },
+					);
+					returnData.push({ json: body as IDataObject, pairedItem: { item: itemIndex } });
+					continue;
+				}
+
+				if (operation === 'getMany') {
+					const returnAll = this.getNodeParameter('returnAll', itemIndex) as boolean;
+					const limit = returnAll
+						? undefined
+						: (this.getNodeParameter('limit', itemIndex) as number);
+
+					const entities = await fetchEntityCollection.call(
+						this,
+						credentials,
+						credentialId,
+						entitySetName,
+						limit,
+					);
+
+					for (const entityData of entities) {
+						returnData.push({ json: entityData, pairedItem: { item: itemIndex } });
+					}
+					continue;
+				}
+
+				if (operation === 'create') {
+					const { body } = await serviceLayerApiRequest.call(
+						this,
+						credentials,
+						credentialId,
+						{
+							url: `/${entitySetName}`,
+							method: 'POST',
+							body: getMappedValues(this, 'entityFields', itemIndex),
+						},
+					);
+					returnData.push({ json: body as IDataObject, pairedItem: { item: itemIndex } });
+					continue;
+				}
+
+				if (operation === 'update') {
+					const keyValues = getMappedValues(this, 'keyFields', itemIndex);
+					const keySegment = buildEntityKeySegment(this, entity, keyValues);
+					const fieldValues = getMappedValues(this, 'entityFields', itemIndex);
+
+					// The Service Layer returns 204 No Content on a successful PATCH. Default
+					// JSON parsing is kept (not json: false): an empty body parses to '' without
+					// throwing, and json: false would also skip parsing a failed PATCH's error
+					// body, losing the real SAP error message/code (confirmed against a live
+					// instance — see sanitizeServiceLayerError in helpers/session.ts).
+					await serviceLayerApiRequest.call(this, credentials, credentialId, {
+						url: `/${keySegment}`,
+						method: 'PATCH',
+						body: fieldValues,
+					});
+
+					returnData.push({
+						json: {
+							success: true,
+							entitySet: entitySetName,
+							key: keyValues,
+							...fieldValues,
+						},
+						pairedItem: { item: itemIndex },
+					});
+					continue;
+				}
+
+				if (operation === 'delete') {
+					const keyValues = getMappedValues(this, 'keyFields', itemIndex);
+					const keySegment = buildEntityKeySegment(this, entity, keyValues);
+
+					// The Service Layer returns 204 No Content on a successful DELETE. See the
+					// comment on the Update branch above for why json: false is deliberately
+					// not used here.
+					await serviceLayerApiRequest.call(this, credentials, credentialId, {
+						url: `/${keySegment}`,
+						method: 'DELETE',
+					});
+
+					returnData.push({
+						json: { success: true, entitySet: entitySetName, key: keyValues },
+						pairedItem: { item: itemIndex },
+					});
+					continue;
+				}
+
+				throw new NodeOperationError(this.getNode(), `Unknown operation "${operation}"`, {
+					itemIndex,
+				});
+			} catch (error) {
+				if (this.continueOnFail()) {
+					returnData.push({
+						json: { error: (error as Error).message },
+						pairedItem: { item: itemIndex },
+					});
+					continue;
+				}
+
+				// buildEntityKeySegment, getServiceLayerMetadata, and serviceLayerApiRequest already
+				// throw NodeApiError/NodeOperationError; both constructors return an existing instance
+				// of their own type unchanged, so wrapping here is a no-op for those and only actually
+				// wraps a genuinely raw error, while keeping every throw site covered by
+				// require-node-api-error.
+				if (error instanceof NodeApiError) {
+					throw new NodeApiError(this.getNode(), error as unknown as JsonObject, { itemIndex });
+				}
+
+				throw new NodeOperationError(this.getNode(), error as Error, { itemIndex });
 			}
-
-			throw new NodeOperationError(this.getNode(), message, { itemIndex });
 		}
 
 		return [returnData];

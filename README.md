@@ -39,7 +39,7 @@ Until then, the project should only be used for development and testing from sou
 
 Development requires:
 
-- Node.js 22.22.0 or later
+- Node.js 24.14.0 or later
 - npm
 - Git
 - OpenSSL
@@ -113,24 +113,31 @@ Self-signed certificates are intended for local development only. Production env
 
 The node exposes a **Resource** selector with three values: **Entity Set**, **Service Operation**, and **Custom API Call**.
 
-Only **Entity Set** currently does anything, and only at the metadata level: it authenticates, fetches and parses the connected instance's Service Layer metadata (`/$metadata`), and lets you pick an entity set (for example `BusinessPartners`, `Orders`, `Items`) from a dynamic, metadata-driven list. No operation runs against the selected entity set yet — every execution currently throws a "not implemented" error, honouring `Continue On Fail`.
+**Entity Set** authenticates, fetches and parses the connected instance's Service Layer metadata (`/$metadata`), and lets you pick an entity set (for example `BusinessPartners`, `Orders`, `Items`) from a dynamic, metadata-driven list. Its **Operation** supports:
+
+- **Get** — fetch a single entity by its key
+- **Get Many** — fetch a collection, with `Return All`/`Limit`
+- **Create** — create an entity
+- **Update** — update an entity by its key
+- **Delete** — delete an entity by its key
 
 **Service Operation** and **Custom API Call** are scaffolding for later releases and have no fields or behaviour yet.
 
-The planned Service Layer operations include:
+The following are planned for later releases:
 
-- Get entity collection
-- Get entity by key
-- Create entity
-- Update entity
-- Delete entity
-- Bound and unbound Service Layer actions and functions
+- Bound and unbound Service Layer actions and functions (e.g. `Orders(1)/Close`, `CompanyService_GetCompanyInfo`)
+- `$select`, `$filter`, `$orderby`, and `$expand` query options for Get/Get Many
 - Custom Service Layer request
-- OData query options
 - Structured SAP Business One error handling
 - Webhook and event integration
 
-These operations are planned and may not yet be available in the current development version.
+These are planned and not yet available in the current development version.
+
+### Entity Set operations
+
+- **Key Fields** (Get, Update, Delete) — identifies the entity, one input per key property, populated from the connected instance's metadata and labelled with the property's own name (for example a single `ItemCode` field for `Items`, or `ItemCode`/`CardCode`/`Substitute` for the three-part composite key of `AlternateCatNum`) — no need to know or type a key's name from memory. Every key field is required; leaving one unset is rejected before any request is sent.
+- **Fields** (Create, Update) — a metadata-driven field mapper: pick which of the entity type's properties to send, sourced from the connected instance's metadata. Collection/navigation properties (for example `Orders.DocumentLines`) are not offered here and cannot be set through Create/Update yet — entities whose meaningful data lives in a line-item collection can only have their header fields set. For Create, the entity's key properties are also offered, since some entity sets require a user-supplied key (`CardCode`) while others assign one automatically (`DocEntry`); for Update, key properties are omitted, since the key is already given via **Key Fields** and the Service Layer does not support changing it through an update.
+- **Get Many** pagination — the Service Layer defaults to 20 rows per page regardless of how many match. `Get Many` requests the page size it actually needs (`Limit`, or unlimited for `Return All`) via the `Prefer: odata.maxpagesize` request header, which normally returns everything in a single request; the server's own pagination (`@odata.nextLink`) is still followed as a fallback if a very large result is nonetheless split across pages.
 
 ## Credentials
 

@@ -59,7 +59,7 @@ export function parseSetCookieValue(setCookie: unknown, name: string): string | 
 }
 
 /** SessionTimeout is reported in minutes. Returns undefined when absent or unusable. */
-export function parseSessionTimeout(raw: unknown): number | undefined {
+function parseSessionTimeout(raw: unknown): number | undefined {
 	const minutes = typeof raw === 'string' ? Number(raw) : raw;
 
 	if (typeof minutes !== 'number' || !Number.isFinite(minutes) || minutes <= 0) {
@@ -161,7 +161,7 @@ export function getTransportErrorDescription(
  * Opens a Service Layer session. Every login consumes a licensed session, so
  * callers should go through ensureSession rather than calling this directly.
  */
-export async function loginToServiceLayer(
+async function loginToServiceLayer(
 	this: ServiceLayerRequestContext,
 	credentials: ServiceLayerCredentials,
 ): Promise<ServiceLayerSession> {
