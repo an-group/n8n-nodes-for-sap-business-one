@@ -190,44 +190,145 @@ describe('sanitizeTransportError', () => {
 	});
 });
 
+describe('transport code unwrapping', () => {
+	// The code is read through the two functions that expose it, rather than
+	// exporting the extractor purely so a test can reach it.
+	const codeOf = (error: unknown) => sanitizeTransportError(error, 'signing in').transportErrorCode;
+
+	it.each(['cause', 'error'])('unwraps a failure nested under %s', (wrapper) => {
+		expect(codeOf({ [wrapper]: { code: 'CERT_HAS_EXPIRED' } })).toBe('CERT_HAS_EXPIRED');
+	});
+
+	it('unwraps two levels', () => {
+		expect(codeOf({ cause: { error: { code: 'INVALID_CA' } } })).toBe('INVALID_CA');
+	});
+
+	it('gives up rather than walking a deeply nested chain', () => {
+		expect(codeOf({ cause: { cause: { cause: { code: 'CERT_HAS_EXPIRED' } } } })).toBeUndefined();
+	});
+
+	it.each([undefined, null, 'a string', 42, {}, { code: 7 }])('finds no code in %s', (value) => {
+		expect(codeOf(value)).toBeUndefined();
+	});
+
+	it('gates a nested code through the same token shape as a top-level one', () => {
+		expect(codeOf({ cause: { code: 'connect ECONNREFUSED 10.0.0.5:50000' } })).toBeUndefined();
+	});
+});
+
 describe('getTransportErrorDescription', () => {
 	const { credentials } = createTestCredentials();
 
 	it.each([
+		// Reached by the CERT/SSL/TLS substring pattern.
 		'CERT_HAS_EXPIRED',
 		'DEPTH_ZERO_SELF_SIGNED_CERT',
+		'SELF_SIGNED_CERT_IN_CHAIN',
+		'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+		'ERR_TLS_CERT_ALTNAME_INVALID',
+		// Listed explicitly, because their codes contain none of the three.
+		'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+		'INVALID_CA',
+		'PATH_LENGTH_EXCEEDED',
+		'INVALID_PURPOSE',
+	])('points at the credential toggle for %s', (code) => {
+		expect(getTransportErrorDescription({ code }, credentials)).toContain(
+			'Allow Unauthorized Certificates',
+		);
+	});
+
+	it.each([
+		['CERT_HAS_EXPIRED', 'has expired'],
+		['CERT_NOT_YET_VALID', 'not valid yet'],
+		['CERT_REVOKED', 'has been revoked'],
+		['DEPTH_ZERO_SELF_SIGNED_CERT', 'self-signed TLS certificate'],
+		['SELF_SIGNED_CERT_IN_CHAIN', 'self-signed authority'],
+		['UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'complete certificate chain'],
+		['UNABLE_TO_GET_ISSUER_CERT_LOCALLY', 'trust store'],
+		['ERR_TLS_CERT_ALTNAME_INVALID', 'host name used in Base URL'],
+	])('names the cause for %s', (code, cause) => {
+		expect(getTransportErrorDescription({ code }, credentials)).toContain(cause);
+	});
+
+	it('marks the toggle as a development measure', () => {
+		expect(getTransportErrorDescription({ code: 'CERT_HAS_EXPIRED' }, credentials)).toContain(
+			'development environments',
+		);
+	});
+
+	it('falls back to a generic cause for a certificate code it does not name', () => {
+		const description = getTransportErrorDescription({ code: 'INVALID_CA' }, credentials);
+
+		expect(description).toContain('could not be verified');
+		expect(description).toContain('Allow Unauthorized Certificates');
+	});
+
+	// The port answered without TLS at all, so skipping certificate validation
+	// changes nothing — recommending the toggle here would be a dead end.
+	it('gives port advice, not toggle advice, when the port is not serving TLS', () => {
+		const description = getTransportErrorDescription(
+			{ code: 'ERR_SSL_WRONG_VERSION_NUMBER' },
+			credentials,
+		);
+
+		expect(description).toContain('50000');
+		expect(description).toContain('does not help here');
+	});
+
+	it('keeps giving port advice when the credential already allows untrusted certs', () => {
+		expect(
+			getTransportErrorDescription(
+				{ code: 'ERR_SSL_WRONG_VERSION_NUMBER' },
+				{ ...credentials, ignoreSslIssues: true },
+			),
+		).toContain('does not help here');
+	});
+
+	it.each([
+		'CERT_HAS_EXPIRED',
+		'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
 		'ERR_TLS_CERT_ALTNAME_INVALID',
 		'ERR_SSL_WRONG_VERSION_NUMBER',
-	])(
-		'points at the credential toggle for %s',
+	])('repeats no credential value for %s', (code) => {
+		const description = getTransportErrorDescription({ code }, credentials) ?? '';
+
+		expect(description).not.toContain(credentials.baseUrl);
+		expect(description).not.toContain(credentials.password);
+		expect(description).not.toContain(credentials.companyDb);
+		expect(description).not.toContain(credentials.username);
+	});
+
+	it('explains a failure the transport nested inside a wrapper', () => {
+		// The code arrives wrapped whenever the helper rejects with its own error
+		// object rather than the underlying one.
+		expect(
+			getTransportErrorDescription({ cause: { code: 'CERT_HAS_EXPIRED' } }, credentials),
+		).toContain('has expired');
+	});
+
+	it('matches a code the transport reported in lower case', () => {
+		// The substring pattern is case-insensitive, so the set lookup has to agree.
+		expect(
+			getTransportErrorDescription({ code: 'unable_to_verify_leaf_signature' }, credentials),
+		).toContain('Allow Unauthorized Certificates');
+	});
+
+	it.each(['CERT_HAS_EXPIRED', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE'])(
+		'stays quiet for %s when the credential already allows untrusted certificates',
 		(code) => {
-			expect(getTransportErrorDescription({ code }, credentials)).toContain(
-				'Allow Unauthorized Certificates',
-			);
+			expect(
+				getTransportErrorDescription({ code }, { ...credentials, ignoreSslIssues: true }),
+			).toBeUndefined();
 		},
 	);
 
-	it('stays quiet when the credential already allows untrusted certificates', () => {
-		expect(
-			getTransportErrorDescription(
-				{ code: 'CERT_HAS_EXPIRED' },
-				{ ...credentials, ignoreSslIssues: true },
-			),
-		).toBeUndefined();
-	});
-
-	// The hint is keyed off CERT/SSL/TLS appearing in the code, so OpenSSL codes
-	// that name neither (UNABLE_TO_VERIFY_LEAF_SIGNATURE is the common one) do not
-	// get it. Pinned as current behaviour, not endorsed as correct.
-	it('misses a TLS code that names neither CERT, SSL nor TLS', () => {
-		expect(
-			getTransportErrorDescription({ code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' }, credentials),
-		).toBeUndefined();
-	});
-
-	it('stays quiet for an unrelated transport failure', () => {
-		expect(getTransportErrorDescription({ code: 'ECONNREFUSED' }, credentials)).toBeUndefined();
-	});
+	// Negative controls: widening the check must not turn it into a catch-all.
+	it.each(['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', 'ECONNRESET', 'EHOSTUNREACH'])(
+		'stays quiet for the unrelated transport failure %s',
+		(code) => {
+			expect(getTransportErrorDescription({ code }, credentials)).toBeUndefined();
+		},
+	);
 });
 
 describe('ensureSession', () => {
@@ -415,6 +516,35 @@ describe('ensureSession', () => {
 
 		const text = flattenErrorText(error);
 		expect(text).toContain('Could not connect');
+		expect(text).not.toContain('pw-abc');
+		expect(text).not.toContain('B1SESSION');
+	});
+
+	it('hints at the credential toggle when the chain cannot be verified', async () => {
+		const scenario = login({
+			'POST /Login': {
+				rejectWith: {
+					code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+					config: { data: { Password: 'pw-abc' }, headers: { Cookie: 'B1SESSION=x' } },
+					// Node attaches the peer certificate to some TLS failures.
+					cert: {
+						subject: { CN: 'sl.invalid' },
+						issuer: { CN: 'ACME Internal CA' },
+						raw: 'MIIDdTCCAl2gAwIBAgIJAKZ',
+					},
+				},
+			},
+		});
+
+		const error = await scenario.run().catch((caught: unknown) => caught);
+		const text = flattenErrorText(error);
+
+		expect(error).toBeInstanceOf(NodeApiError);
+		expect(text).toContain('Allow Unauthorized Certificates');
+		// The certificate belongs to the server rather than the user, but it is
+		// still request data with no business in a workflow error.
+		expect(text).not.toContain('ACME Internal CA');
+		expect(text).not.toContain('MIIDdTCCAl2gAwIBAgIJAKZ');
 		expect(text).not.toContain('pw-abc');
 		expect(text).not.toContain('B1SESSION');
 	});

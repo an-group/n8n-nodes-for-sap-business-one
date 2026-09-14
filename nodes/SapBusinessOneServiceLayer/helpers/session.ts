@@ -13,6 +13,72 @@ const TRANSPORT_ERROR_CODE_PATTERN = /^[A-Z0-9_]{1,64}$/;
 const TLS_ERROR_CODE_PATTERN = /CERT|SSL|TLS/i;
 
 /**
+ * Chain-verification failures whose OpenSSL code names neither CERT, SSL nor
+ * TLS, so the pattern above cannot reach them.
+ * UNABLE_TO_VERIFY_LEAF_SIGNATURE is by far the common one: the Service Layer
+ * presents a leaf certificate whose issuer is not in the trust store and sends
+ * no intermediate chain, which is what an openssl-generated certificate does
+ * unless the chain is installed alongside it. Every code here is resolved the
+ * same way, by trusting the certificate, so they share the one hint.
+ */
+const TLS_ERROR_CODES = new Set([
+	'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+	'INVALID_CA',
+	'PATH_LENGTH_EXCEEDED',
+	'INVALID_PURPOSE',
+]);
+
+/**
+ * What actually went wrong, per code, so the hint names the cause rather than
+ * describing every certificate failure identically. A code that is recognised
+ * as TLS-related but is not listed here falls back to GENERIC_TLS_CAUSE.
+ */
+const TLS_CAUSE_BY_CODE = new Map<string, string>([
+	['CERT_HAS_EXPIRED', 'The TLS certificate of the Service Layer has expired.'],
+	[
+		'CERT_NOT_YET_VALID',
+		'The TLS certificate of the Service Layer is not valid yet, which usually means the clock on one of the two machines is wrong.',
+	],
+	['CERT_REVOKED', 'The TLS certificate of the Service Layer has been revoked.'],
+	['DEPTH_ZERO_SELF_SIGNED_CERT', 'The Service Layer uses a self-signed TLS certificate.'],
+	[
+		'SELF_SIGNED_CERT_IN_CHAIN',
+		'The TLS certificate of the Service Layer is signed by a self-signed authority that this machine does not trust.',
+	],
+	[
+		'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+		'The Service Layer did not send a complete certificate chain, so the issuer of its TLS certificate could not be verified.',
+	],
+	[
+		'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+		'The issuer of the Service Layer TLS certificate is not in this machine trust store.',
+	],
+	[
+		'ERR_TLS_CERT_ALTNAME_INVALID',
+		'The TLS certificate of the Service Layer does not cover the host name used in Base URL.',
+	],
+]);
+
+const GENERIC_TLS_CAUSE = 'The TLS certificate of the Service Layer could not be verified.';
+
+const ALLOW_UNAUTHORIZED_ADVICE =
+	'Enable Allow Unauthorized Certificates in the credential to connect anyway — intended for development environments; production should use a certificate this machine trusts.';
+
+/**
+ * TLS failures the credential toggle cannot fix, paired with the advice that
+ * does apply. ERR_SSL_WRONG_VERSION_NUMBER is the one that matters in practice:
+ * the port answered without TLS at all, so skipping certificate validation
+ * changes nothing. This advice is shown even when the toggle is already on,
+ * because that user is the one still staring at a failure.
+ */
+const TLS_ADVICE_BY_CODE = new Map<string, string>([
+	[
+		'ERR_SSL_WRONG_VERSION_NUMBER',
+		'The port did not answer with TLS. Check that Base URL uses https and the Service Layer port, commonly 50000. Allow Unauthorized Certificates does not help here.',
+	],
+]);
+
+/**
  * Only the Service Layer v2 API is supported (see helpers/metadata.ts's version
  * guard) — v1 predates Actions/Functions entirely, which this package's
  * metadata-driven design depends on.
@@ -123,10 +189,46 @@ export function sanitizeServiceLayerError(statusCode: number, body: unknown): Js
  * config, which for /Login includes the password and for other calls includes
  * the session cookie, so only a short transport code is allowed through.
  */
+/**
+ * Reads the transport failure code, unwrapping the shapes n8n hands us.
+ * `helpers.httpRequest` surfaces the OpenSSL code at the top level, while the
+ * legacy `helpers.request` used by credential tests nests the original failure
+ * under `cause` or `error`, so a couple of levels are followed.
+ */
+function getTransportErrorCode(error: unknown): string | undefined {
+	let current: unknown = error;
+
+	for (let depth = 0; depth < 3; depth++) {
+		if (current === null || typeof current !== 'object') {
+			return undefined;
+		}
+
+		const candidate = current as { code?: unknown; cause?: unknown; error?: unknown };
+
+		if (typeof candidate.code === 'string') {
+			return candidate.code;
+		}
+
+		current = candidate.cause ?? candidate.error;
+	}
+
+	return undefined;
+}
+
+/**
+ * The transport code, but only when it is short and token-shaped. Anything
+ * else is dropped rather than shown: Node reports some failures as a whole
+ * sentence (`connect ECONNREFUSED 10.0.0.5:50000`), which would put the host
+ * in front of the user.
+ */
+function getSafeTransportErrorCode(error: unknown): string | undefined {
+	const code = getTransportErrorCode(error);
+
+	return code !== undefined && TRANSPORT_ERROR_CODE_PATTERN.test(code) ? code : undefined;
+}
+
 export function sanitizeTransportError(error: unknown, action: string): JsonObject {
-	const code = (error as { code?: unknown } | null | undefined)?.code;
-	const transportErrorCode =
-		typeof code === 'string' && TRANSPORT_ERROR_CODE_PATTERN.test(code) ? code : undefined;
+	const transportErrorCode = getSafeTransportErrorCode(error);
 	const reason = `Could not reach the SAP Business One Service Layer while ${action}`;
 	const sanitized: JsonObject = {
 		message: transportErrorCode === undefined ? reason : `${reason} (${transportErrorCode})`,
@@ -139,22 +241,46 @@ export function sanitizeTransportError(error: unknown, action: string): JsonObje
 	return sanitized;
 }
 
-/** Points at the credential toggle when a TLS failure is the likely cause. */
+/**
+ * True for a certificate-verification failure. The substring pattern carries
+ * most of the load — it also covers whatever ERR_TLS_* / ERR_SSL_* codes Node
+ * adds later — and the set fills in the codes it cannot match.
+ */
+function isTlsErrorCode(code: string): boolean {
+	return TLS_ERROR_CODE_PATTERN.test(code) || TLS_ERROR_CODES.has(code.toUpperCase());
+}
+
+/**
+ * Explains a TLS failure: what went wrong, then what to do about it. Never
+ * includes a credential value — Base URL is named as a field, not quoted.
+ */
+function describeTlsFailure(code: string, ignoreSslIssues: boolean): string | undefined {
+	const specificAdvice = TLS_ADVICE_BY_CODE.get(code);
+
+	if (specificAdvice !== undefined) {
+		return specificAdvice;
+	}
+
+	if (ignoreSslIssues) {
+		// The toggle is already on, so the only advice available is spent.
+		return undefined;
+	}
+
+	return `${TLS_CAUSE_BY_CODE.get(code) ?? GENERIC_TLS_CAUSE} ${ALLOW_UNAUTHORIZED_ADVICE}`;
+}
+
+/** Explains a transport failure when a TLS problem is the likely cause. */
 export function getTransportErrorDescription(
 	error: unknown,
 	credentials: ServiceLayerCredentials,
 ): string | undefined {
-	const code = (error as { code?: unknown } | null | undefined)?.code;
+	const code = getTransportErrorCode(error);
 
-	if (
-		credentials.ignoreSslIssues ||
-		typeof code !== 'string' ||
-		!TLS_ERROR_CODE_PATTERN.test(code)
-	) {
+	if (code === undefined || !isTlsErrorCode(code)) {
 		return undefined;
 	}
 
-	return 'The TLS certificate could not be verified. If the Service Layer uses a self-signed certificate, enable Allow Unauthorized Certificates in the credential.';
+	return describeTlsFailure(code.toUpperCase(), credentials.ignoreSslIssues);
 }
 
 /**

@@ -296,6 +296,30 @@ describe('serviceLayerApiRequest session recovery', () => {
 		expect(text).not.toContain('B1SESSION');
 		expect(text).not.toContain(test.credentials.password);
 	});
+
+	it('hints at the credential toggle when a post-login call fails TLS verification', async () => {
+		const test = scenario({
+			'POST /Login': LOGIN_OK,
+			'GET /Orders': {
+				rejectWith: {
+					code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+					config: { headers: { Cookie: 'B1SESSION=sess-1' } },
+					cert: { issuer: { CN: 'ACME Internal CA' } },
+				},
+			},
+		});
+
+		const error = await test
+			.send({ url: '/Orders', method: 'GET' })
+			.catch((caught: unknown) => caught);
+		const text = flattenErrorText(error);
+
+		expect(error).toBeInstanceOf(NodeApiError);
+		expect(text).toContain('Allow Unauthorized Certificates');
+		expect(text).not.toContain('ACME Internal CA');
+		expect(text).not.toContain('B1SESSION');
+		expect(text).not.toContain(test.credentials.password);
+	});
 });
 
 describe('fetchEntityCollection', () => {
