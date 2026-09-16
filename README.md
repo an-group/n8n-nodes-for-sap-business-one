@@ -127,7 +127,7 @@ Tests live in `test/` rather than beside the source, so they are never compiled 
 
 Coverage output is intentionally limited to a terminal text summary plus `coverage/lcov.info` (no HTML report): `n8n-node build` copies every `**/*.{png,svg}` outside `dist/` and `node_modules/` into the build output, and the HTML reporter emits PNG assets that would then be published.
 
-Covered today: OData literal encoding, simple and composite entity keys, metadata parsing, session reuse and invalidation, concurrent login de-duplication, expired-session retry, and Entity Set CRUD request construction. Live Service Layer integration tests and end-to-end n8n workflow tests are out of scope; verification against a real instance remains manual.
+Covered today: OData literal encoding, simple and composite entity keys, metadata parsing, session reuse and invalidation, concurrent login de-duplication, expired-session retry, Entity Set CRUD request construction, and Custom API Call endpoint validation, body parsing, and request construction. Live Service Layer integration tests and end-to-end n8n workflow tests are out of scope; verification against a real instance remains manual.
 
 ### Writing tests
 
@@ -152,13 +152,14 @@ The node exposes a **Resource** selector with three values: **Entity Set**, **Se
 - **Update** — update an entity by its key
 - **Delete** — delete an entity by its key
 
-**Service Operation** and **Custom API Call** are scaffolding for later releases and have no fields or behaviour yet.
+**Custom API Call** sends a request to any Service Layer endpoint you enter yourself, reusing the credential and session handling described below. See [Custom API Call](#custom-api-call).
+
+**Service Operation** is scaffolding for a later release and has no fields or behaviour yet.
 
 The following are planned for later releases:
 
-- Bound and unbound Service Layer actions and functions (e.g. `Orders(1)/Close`, `CompanyService_GetCompanyInfo`)
+- Guided bound and unbound Service Layer actions and functions (e.g. `Orders(1)/Close`, `CompanyService_GetCompanyInfo`); until then they can be called through **Custom API Call**
 - `$select`, `$filter`, `$orderby`, and `$expand` query options for Get/Get Many
-- Custom Service Layer request
 - Structured SAP Business One error handling
 - Webhook and event integration
 
@@ -169,6 +170,36 @@ These are planned and not yet available in the current development version.
 - **Key Fields** (Get, Update, Delete) — identifies the entity, one input per key property, populated from the connected instance's metadata and labelled with the property's own name (for example a single `ItemCode` field for `Items`, or `ItemCode`/`CardCode`/`Substitute` for the three-part composite key of `AlternateCatNum`) — no need to know or type a key's name from memory. Every key field is required; leaving one unset is rejected before any request is sent.
 - **Fields** (Create, Update) — a metadata-driven field mapper: pick which of the entity type's properties to send, sourced from the connected instance's metadata. Collection/navigation properties (for example `Orders.DocumentLines`) are not offered here and cannot be set through Create/Update yet — entities whose meaningful data lives in a line-item collection can only have their header fields set. For Create, the entity's key properties are also offered, since some entity sets require a user-supplied key (`CardCode`) while others assign one automatically (`DocEntry`); for Update, key properties are omitted, since the key is already given via **Key Fields** and the Service Layer does not support changing it through an update.
 - **Get Many** pagination — the Service Layer defaults to 20 rows per page regardless of how many match. `Get Many` requests the page size it actually needs (`Limit`, or unlimited for `Return All`) via the `Prefer: odata.maxpagesize` request header, which normally returns everything in a single request; the server's own pagination (`@odata.nextLink`) is still followed as a fallback if a very large result is nonetheless split across pages.
+
+### Custom API Call
+
+An escape hatch for Service Layer endpoints the guided operations do not cover yet. Requests go through the same authenticated request layer as the Entity Set operations, so login, `B1SESSION` reuse, expired-session retry, the TLS certificate setting, and error handling behave identically.
+
+- **Method** — `DELETE`, `GET`, `PATCH`, `POST`, or `PUT`.
+- **Endpoint** — a path relative to the credential's Base URL; the `/b1s/v2` API root is added automatically and a missing leading slash is added for you. Query parameters go directly into the endpoint. For example:
+
+  ```text
+  /Orders(45)
+  /Orders?$top=10&$orderby=DocEntry desc
+  /Orders(45)/Close
+  /CompanyService_GetCompanyInfo()
+  ```
+
+  The following are rejected before any request or login is made:
+  - absolute or protocol-relative URLs (`https://…`, `//host/…`, or any other `scheme:`), so the session cookie is never sent to another server
+  - `..` path segments, including percent-encoded ones, so the call cannot leave the Service Layer API path
+  - the `Login` and `Logout` endpoints, because the node manages the session itself — a custom login would put a session ID in the output, and a custom logout would end the session shared by every execution using the credential
+- **JSON Body** (`POST`, `PATCH`, `PUT` only) — optional. Leave it empty to send no body. It must be a JSON object or array; invalid JSON fails with a clear error before any request is sent. An expression that resolves to an object is used as-is.
+
+Each input item produces one output item:
+
+- an object response is returned unchanged — collection responses (`{ "value": [...] }`) are **not** split into separate items and are **not** paginated; follow `@odata.nextLink` yourself if needed
+- an empty response (for example `204 No Content` from `PATCH`, `DELETE`, or an action) returns `{ "success": true, "statusCode": 204 }`
+- any other response (plain text, XML, or a top-level array) is returned under `data`
+
+Custom headers, a structured query builder, and file/binary uploads are not supported. Response headers are never returned, so session cookies cannot appear in the output.
+
+The node is `usableAsTool`, so an AI agent given this node can issue any of these methods — including `DELETE` — against any Service Layer endpoint the SAP user is authorised for. Scope the SAP user's permissions accordingly.
 
 ## Credentials
 
@@ -200,7 +231,7 @@ The package manages Service Layer sessions internally. It authenticates once per
 - Sessions are held per n8n process. In queue mode each worker keeps its own session, so one credential can hold up to one licensed session per worker. Sessions are not persisted across restarts.
 - The session is never exposed as a node parameter, a credential field, or node output, and session cookies are kept out of logs and error messages.
 
-Logout handling is not yet implemented. The Entity Set resource's metadata fetch (below) is currently the only caller of this session layer; it is the foundation for the planned Service Layer operations listed above.
+Logout handling is not yet implemented. The Entity Set operations, their metadata fetch (below), and Custom API Call all use this session layer.
 
 Passwords, session cookies, and other secrets must not be included in workflow parameters, logs, issues, screenshots, or example data.
 

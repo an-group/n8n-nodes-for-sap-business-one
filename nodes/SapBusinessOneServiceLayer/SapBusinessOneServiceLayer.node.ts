@@ -13,6 +13,7 @@ import {
 	SERVICE_LAYER_CREDENTIAL_NAME,
 	getServiceLayerCredentials,
 } from './helpers/credentials';
+import { CUSTOM_API_CALL_BODY_METHODS, executeCustomApiCall } from './helpers/customApiCall';
 import { buildEntityKeySegment } from './helpers/entityPath';
 import { getServiceLayerMetadata } from './helpers/metadata';
 import { fetchEntityCollection, serviceLayerApiRequest } from './helpers/request';
@@ -41,7 +42,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 		group: ['transform'],
 		version: 1,
 		subtitle:
-			'={{$parameter["resource"] === "entitySet" ? $parameter["operation"] + ": " + $parameter["entitySet"] : $parameter["resource"]}}',
+			'={{$parameter["resource"] === "entitySet" ? $parameter["operation"] + ": " + $parameter["entitySet"] : $parameter["resource"] === "customApiCall" ? $parameter["method"] + " " + $parameter["endpoint"] : $parameter["resource"]}}',
 		description: 'Interact with the SAP Business One Service Layer',
 		defaults: {
 			name: 'SAP Business One Service Layer',
@@ -210,6 +211,53 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				},
 				description: 'Max number of results to return',
 			},
+			{
+				displayName: 'Method',
+				name: 'method',
+				type: 'options',
+				displayOptions: {
+					show: {
+						resource: ['customApiCall'],
+					},
+				},
+				options: [
+					{ name: 'DELETE', value: 'DELETE' },
+					{ name: 'GET', value: 'GET' },
+					{ name: 'PATCH', value: 'PATCH' },
+					{ name: 'POST', value: 'POST' },
+					{ name: 'PUT', value: 'PUT' },
+				],
+				default: 'GET',
+				description: 'The HTTP method to use',
+			},
+			{
+				displayName: 'Endpoint',
+				name: 'endpoint',
+				type: 'string',
+				required: true,
+				default: '',
+				placeholder: '/Orders(45)',
+				displayOptions: {
+					show: {
+						resource: ['customApiCall'],
+					},
+				},
+				description:
+					'Service Layer path relative to the Base URL of the credential; the /b1s/v2 API root is added automatically. May include query parameters, for example /Orders?$top=10.',
+			},
+			{
+				displayName: 'JSON Body',
+				name: 'jsonBody',
+				type: 'json',
+				default: '',
+				displayOptions: {
+					show: {
+						resource: ['customApiCall'],
+						method: ['PATCH', 'POST', 'PUT'],
+					},
+				},
+				description: 'Optional JSON request body. Leave empty to send no body.',
+			},
 		],
 	};
 
@@ -230,6 +278,25 @@ export class SapBusinessOneServiceLayer implements INodeType {
 		for (let itemIndex = 0; itemIndex < inputItems.length; itemIndex++) {
 			try {
 				const resource = this.getNodeParameter('resource', itemIndex) as string;
+
+				// Branches before the metadata fetch below: a custom call addresses an
+				// arbitrary endpoint and has no use for the parsed /$metadata document.
+				if (resource === 'customApiCall') {
+					const method = this.getNodeParameter('method', itemIndex) as string;
+					const json = await executeCustomApiCall.call(
+						this,
+						{
+							method,
+							endpoint: this.getNodeParameter('endpoint', itemIndex),
+							jsonBody: (CUSTOM_API_CALL_BODY_METHODS as readonly string[]).includes(method)
+								? this.getNodeParameter('jsonBody', itemIndex, '')
+								: undefined,
+						},
+						itemIndex,
+					);
+					returnData.push({ json, pairedItem: { item: itemIndex } });
+					continue;
+				}
 
 				if (resource !== 'entitySet') {
 					throw new NodeOperationError(
