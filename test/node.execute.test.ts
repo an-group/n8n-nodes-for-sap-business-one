@@ -1,4 +1,4 @@
-import { NodeOperationError } from 'n8n-workflow';
+import { NodeApiError, NodeOperationError } from 'n8n-workflow';
 import type { INodeExecutionData } from 'n8n-workflow';
 import { describe, expect, it } from 'vitest';
 
@@ -265,6 +265,199 @@ describe('Entity Set across multiple items', () => {
 		});
 
 		await expect(test.run()).resolves.toHaveLength(1);
+	});
+});
+
+function customCallParams(
+	method: string,
+	endpoint: string,
+	jsonBody: unknown = '',
+): Record<string, ParameterValue> {
+	return { resource: 'customApiCall', method, endpoint, jsonBody };
+}
+
+describe('Custom API Call', () => {
+	it('sends a GET with the query string inline and returns the body unsplit', async () => {
+		const endpoint = '/Orders?$top=10&$orderby=DocEntry desc';
+		const body = { value: [{ DocEntry: 2 }, { DocEntry: 1 }] };
+		const test = harness({
+			routes: { [`GET ${endpoint}`]: { statusCode: 200, body } },
+			parameters: customCallParams('GET', endpoint),
+		});
+
+		const output = await test.run();
+
+		const [request] = test.http.callsFor(`GET ${endpoint}`);
+		expect(request.body).toBeUndefined();
+		expect(request.qs).toBeUndefined();
+		expect(output).toEqual([[{ json: body, pairedItem: { item: 0 } }]]);
+	});
+
+	it('adds the leading slash and never fetches metadata', async () => {
+		const test = harness({
+			routes: {
+				'GET /CompanyService_GetCompanyInfo()': { statusCode: 200, body: { CompanyName: 'X' } },
+			},
+			parameters: customCallParams('GET', 'CompanyService_GetCompanyInfo()'),
+		});
+
+		await test.run();
+
+		expect(test.http.countFor('GET /CompanyService_GetCompanyInfo()')).toBe(1);
+		expect(test.http.countFor('GET /$metadata')).toBe(0);
+	});
+
+	it.each(['POST', 'PATCH', 'PUT'])('sends the parsed JSON body with %s', async (method) => {
+		const test = harness({
+			routes: { [`${method} /Orders(45)`]: { statusCode: 200, body: { ok: 1 } } },
+			parameters: customCallParams(method, '/Orders(45)', '{"Comments":"hi","Lines":[1]}'),
+		});
+
+		await test.run();
+
+		expect(test.http.callsFor(`${method} /Orders(45)`)[0].body).toEqual({
+			Comments: 'hi',
+			Lines: [1],
+		});
+	});
+
+	it('uses an object body from an expression as-is', async () => {
+		const test = harness({
+			routes: { 'POST /Orders': { statusCode: 201, body: { DocEntry: 9 } } },
+			parameters: customCallParams('POST', '/Orders', { CardCode: 'C1' }),
+		});
+
+		const output = await test.run();
+
+		expect(test.http.callsFor('POST /Orders')[0].body).toEqual({ CardCode: 'C1' });
+		expect(output[0][0].json).toEqual({ DocEntry: 9 });
+	});
+
+	it('sends no body for an empty JSON field and reports a 204 as success', async () => {
+		const test = harness({
+			routes: { 'POST /Orders(45)/Close': { statusCode: 204, body: '' } },
+			parameters: customCallParams('POST', '/Orders(45)/Close'),
+		});
+
+		const output = await test.run();
+
+		expect(test.http.callsFor('POST /Orders(45)/Close')[0]).not.toHaveProperty('body');
+		expect(output[0][0].json).toEqual({ success: true, statusCode: 204 });
+	});
+
+	it.each(['GET', 'DELETE'])('never reads or sends a body with %s', async (method) => {
+		const test = harness({
+			routes: { [`${method} /Orders(45)`]: { statusCode: 204, body: '' } },
+			// Only these three parameters are configured; reading jsonBody would throw.
+			parameters: { resource: 'customApiCall', method, endpoint: '/Orders(45)' },
+		});
+
+		await test.run();
+
+		expect(test.http.callsFor(`${method} /Orders(45)`)[0]).not.toHaveProperty('body');
+	});
+
+	it.each([
+		['invalid JSON', customCallParams('POST', '/Orders', '{nope'), 'The JSON body is not valid JSON'],
+		[
+			'an absolute URL',
+			customCallParams('GET', 'https://evil.invalid/Orders'),
+			'Only relative Service Layer endpoints are allowed',
+		],
+		[
+			'a protocol-relative URL',
+			customCallParams('GET', '//evil.invalid/Orders'),
+			'Only relative Service Layer endpoints are allowed',
+		],
+		[
+			'path traversal',
+			customCallParams('GET', '/../Orders'),
+			'The endpoint must not contain ".." path segments',
+		],
+		[
+			'the Login endpoint',
+			customCallParams('POST', '/Login', '{}'),
+			'The Login and Logout endpoints cannot be called directly',
+		],
+		[
+			'the Logout endpoint',
+			customCallParams('POST', '/Logout'),
+			'The Login and Logout endpoints cannot be called directly',
+		],
+	])('rejects %s before logging in', async (_label, parameters, message) => {
+		const test = harness({ parameters });
+
+		const error = await test.run().catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(NodeOperationError);
+		expect(flattenErrorText(error)).toContain(message);
+		expect(test.http.calls).toHaveLength(0);
+	});
+
+	it('logs in again and retries once when the session has expired', async () => {
+		const test = harness({
+			routes: {
+				'POST /Login': [LOGIN_OK, { statusCode: 200, body: { SessionId: 'sess-2', SessionTimeout: 30 } }],
+				'GET /Orders(45)': [
+					{ statusCode: 401, body: { error: { code: 301, message: 'Invalid session' } } },
+					{ statusCode: 200, body: { DocEntry: 45 } },
+				],
+			},
+			parameters: customCallParams('GET', '/Orders(45)'),
+		});
+
+		const output = await test.run();
+
+		expect(test.http.countFor('POST /Login')).toBe(2);
+		const retried = test.http.callsFor('GET /Orders(45)')[1];
+		expect(retried.headers?.Cookie).toBe('B1SESSION=sess-2');
+		expect(output[0][0].json).toEqual({ DocEntry: 45 });
+	});
+
+	it('surfaces a Service Layer error as a NodeApiError', async () => {
+		const test = harness({
+			routes: {
+				'GET /Orders(999)': {
+					statusCode: 404,
+					body: { error: { code: -2028, message: 'No matching records found' } },
+				},
+			},
+			parameters: customCallParams('GET', '/Orders(999)'),
+		});
+
+		const error = await test.run().catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(NodeApiError);
+		expect(flattenErrorText(error)).toContain('No matching records found');
+	});
+
+	it('collects the error on the item when continueOnFail is set', async () => {
+		const test = harness({
+			parameters: customCallParams('GET', 'https://evil.invalid/Orders'),
+			continueOnFail: true,
+		});
+
+		const output = await test.run();
+
+		expect(output[0]).toEqual([
+			{
+				json: { error: 'Only relative Service Layer endpoints are allowed' },
+				pairedItem: { item: 0 },
+			},
+		]);
+	});
+
+	it('keeps credentials and session cookies out of the output', async () => {
+		const test = harness({
+			routes: { 'GET /Orders(45)': { statusCode: 200, body: { DocEntry: 45 } } },
+			parameters: customCallParams('GET', '/Orders(45)'),
+		});
+
+		const serialized = JSON.stringify(await test.run());
+
+		expect(serialized).not.toContain(test.credentials.password);
+		expect(serialized).not.toContain('B1SESSION');
+		expect(serialized).not.toContain('sess-1');
 	});
 });
 
