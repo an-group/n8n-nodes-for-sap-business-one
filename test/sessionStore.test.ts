@@ -43,7 +43,7 @@ describe('getCredentialFingerprint', () => {
 		['companyDb', { companyDb: 'OTHERDB' }],
 		['username', { username: 'other' }],
 		['password', { password: 'other' }],
-		['ignoreSslIssues', { ignoreSslIssues: true }],
+		['skipTlsVerification', { skipTlsVerification: true }],
 	])('changes when %s changes', (_field, override) => {
 		const { credentials } = createTestCredentials();
 		const changed = { ...credentials, ...override };

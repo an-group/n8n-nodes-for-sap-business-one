@@ -50,7 +50,7 @@ export class SapBusinessOneServiceLayerApi implements ICredentialType {
 		},
 		{
 			displayName: 'Allow Unauthorized Certificates',
-			name: 'ignoreSslIssues',
+			name: 'skipTlsVerification',
 			type: 'boolean',
 			default: false,
 			noDataExpression: true,
@@ -70,7 +70,7 @@ export class SapBusinessOneServiceLayerApi implements ICredentialType {
 				Password: '={{$credentials.password}}',
 			},
 			json: true,
-			skipSslCertificateValidation: '={{$credentials.ignoreSslIssues}}',
+			skipSslCertificateValidation: '={{$credentials.skipTlsVerification}}',
 		},
 	};
 }

@@ -254,14 +254,14 @@ function isTlsErrorCode(code: string): boolean {
  * Explains a TLS failure: what went wrong, then what to do about it. Never
  * includes a credential value — Base URL is named as a field, not quoted.
  */
-function describeTlsFailure(code: string, ignoreSslIssues: boolean): string | undefined {
+function describeTlsFailure(code: string, skipTlsVerification: boolean): string | undefined {
 	const specificAdvice = TLS_ADVICE_BY_CODE.get(code);
 
 	if (specificAdvice !== undefined) {
 		return specificAdvice;
 	}
 
-	if (ignoreSslIssues) {
+	if (skipTlsVerification) {
 		// The toggle is already on, so the only advice available is spent.
 		return undefined;
 	}
@@ -280,7 +280,7 @@ export function getTransportErrorDescription(
 		return undefined;
 	}
 
-	return describeTlsFailure(code.toUpperCase(), credentials.ignoreSslIssues);
+	return describeTlsFailure(code.toUpperCase(), credentials.skipTlsVerification);
 }
 
 /**
@@ -304,7 +304,7 @@ async function loginToServiceLayer(
 				Password: credentials.password,
 			},
 			json: true,
-			skipSslCertificateValidation: credentials.ignoreSslIssues,
+			skipSslCertificateValidation: credentials.skipTlsVerification,
 			returnFullResponse: true,
 			ignoreHttpStatusErrors: true,
 		})) as IN8nHttpFullResponse;

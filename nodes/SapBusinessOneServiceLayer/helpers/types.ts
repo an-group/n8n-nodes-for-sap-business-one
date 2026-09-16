@@ -8,7 +8,7 @@ export interface ServiceLayerCredentials {
 	username: string;
 	password: string;
 	companyDb: string;
-	ignoreSslIssues: boolean;
+	skipTlsVerification: boolean;
 }
 
 /**

@@ -95,7 +95,7 @@ describe('serviceLayerApiRequest', () => {
 	it('owns the transport options the caller cannot set', async () => {
 		const test = scenario(
 			{ 'POST /Login': LOGIN_OK, 'GET /Orders': { statusCode: 200, body: {} } },
-			{ ignoreSslIssues: true },
+			{ skipTlsVerification: true },
 		);
 
 		await test.send({ url: '/Orders', method: 'GET' });
