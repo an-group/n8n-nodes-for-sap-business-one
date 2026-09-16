@@ -96,7 +96,7 @@ async function sendWithSession(
 			...options,
 			baseURL: buildServiceLayerBaseUrl(credentials.baseUrl),
 			headers: buildAuthenticatedHeaders(options.headers, session),
-			skipSslCertificateValidation: credentials.ignoreSslIssues,
+			skipSslCertificateValidation: credentials.skipTlsVerification,
 			returnFullResponse: true,
 			ignoreHttpStatusErrors: true,
 		})) as IN8nHttpFullResponse;

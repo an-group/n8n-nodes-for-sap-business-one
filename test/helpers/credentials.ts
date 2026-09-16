@@ -30,7 +30,7 @@ export function createTestCredentials(
 			username: 'tester',
 			password: 'pw-abc',
 			companyDb: `SBODEMO_${seed}`,
-			ignoreSslIssues: false,
+			skipTlsVerification: false,
 			...overrides,
 		},
 		credentialId: `cred-${seed}`,

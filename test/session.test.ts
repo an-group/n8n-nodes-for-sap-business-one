@@ -279,7 +279,7 @@ describe('getTransportErrorDescription', () => {
 		expect(
 			getTransportErrorDescription(
 				{ code: 'ERR_SSL_WRONG_VERSION_NUMBER' },
-				{ ...credentials, ignoreSslIssues: true },
+				{ ...credentials, skipTlsVerification: true },
 			),
 		).toContain('does not help here');
 	});
@@ -317,7 +317,7 @@ describe('getTransportErrorDescription', () => {
 		'stays quiet for %s when the credential already allows untrusted certificates',
 		(code) => {
 			expect(
-				getTransportErrorDescription({ code }, { ...credentials, ignoreSslIssues: true }),
+				getTransportErrorDescription({ code }, { ...credentials, skipTlsVerification: true }),
 			).toBeUndefined();
 		},
 	);
@@ -367,7 +367,7 @@ describe('ensureSession', () => {
 
 	it('mirrors the credential TLS setting onto the request', async () => {
 		const http = createHttpFake({ 'POST /Login': LOGIN_OK });
-		const { credentials, credentialId } = createTestCredentials({ ignoreSslIssues: true });
+		const { credentials, credentialId } = createTestCredentials({ skipTlsVerification: true });
 
 		await ensureSession.call(
 			createRequestContext(http),

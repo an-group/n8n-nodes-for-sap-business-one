@@ -33,7 +33,7 @@ export function getCredentialFingerprint(credentials: ServiceLayerCredentials): 
 				credentials.companyDb,
 				credentials.username,
 				credentials.password,
-				credentials.ignoreSslIssues,
+				credentials.skipTlsVerification,
 			]),
 		)
 		.digest('hex');
