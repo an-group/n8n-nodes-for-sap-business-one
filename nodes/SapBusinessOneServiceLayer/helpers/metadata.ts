@@ -7,6 +7,7 @@ import { serviceLayerApiRequest } from './request';
 import { withSingleFlight } from './singleFlight';
 import type {
 	BoundOperationDefinition,
+	ComplexTypeDefinition,
 	EntityDefinition,
 	EntityKeyProperty,
 	EntityPropertyDefinition,
@@ -55,7 +56,7 @@ function getEdmxVersion(xml: string): string | undefined {
 	return rootAttributes === undefined ? undefined : getAttribute(rootAttributes, 'Version');
 }
 
-function stripNamespace(qualifiedName: string): string {
+export function stripNamespace(qualifiedName: string): string {
 	const separatorIndex = qualifiedName.lastIndexOf('.');
 	return separatorIndex === -1 ? qualifiedName : qualifiedName.slice(separatorIndex + 1);
 }
@@ -195,6 +196,46 @@ function parseOperationDefinitions(
 	}
 
 	return definitions;
+}
+
+/**
+ * Parses every `ComplexType`, self-closing or not. A name declared twice keeps
+ * its first definition: real Service Layer metadata declares `Event` twice,
+ * with identical bodies, so a duplicate is not a structural failure.
+ */
+function parseComplexTypes(xml: string): Map<string, ComplexTypeDefinition> {
+	const complexTypes = new Map<string, ComplexTypeDefinition>();
+	const pattern = /<ComplexType\s+([^>]*?)(?:\/>|>([\s\S]*?)<\/ComplexType>)/g;
+	let match: RegExpExecArray | null;
+
+	while ((match = pattern.exec(xml)) !== null) {
+		const name = getAttribute(match[1], 'Name');
+
+		if (name === undefined || complexTypes.has(name)) {
+			continue;
+		}
+
+		complexTypes.set(name, { name, properties: parseProperties(match[2] ?? '') });
+	}
+
+	return complexTypes;
+}
+
+/** Collects every `EnumType` name; members are not needed yet. */
+function parseEnumTypeNames(xml: string): Set<string> {
+	const names = new Set<string>();
+	const pattern = /<EnumType\s+([^>]*?)\/?>/g;
+	let match: RegExpExecArray | null;
+
+	while ((match = pattern.exec(xml)) !== null) {
+		const name = getAttribute(match[1], 'Name');
+
+		if (name !== undefined) {
+			names.add(name);
+		}
+	}
+
+	return names;
 }
 
 interface RawImportDefinition {
@@ -354,7 +395,13 @@ export function parseMetadataXml(xml: string): ServiceLayerMetadata {
 		})),
 	];
 
-	return { entities, unboundOperations };
+	return {
+		entities,
+		unboundOperations,
+		complexTypes: parseComplexTypes(xml),
+		enumTypeNames: parseEnumTypeNames(xml),
+		entityTypeNames: new Set(entityTypesByName.keys()),
+	};
 }
 
 /**

@@ -8,6 +8,7 @@ import {
 import type { EntityDefinition } from '../nodes/SapBusinessOneServiceLayer/helpers/types';
 import {
 	EDMX_BROKEN_ENTITY_SET,
+	EDMX_COMPLEX_AND_ENUM_TYPES,
 	EDMX_EMPTY,
 	EDMX_NO_VERSION,
 	EDMX_V1,
@@ -151,6 +152,84 @@ describe('parseMetadataXml', () => {
 
 		expect(metadata.entities.size).toBe(0);
 		expect(metadata.unboundOperations).toEqual([]);
+		expect(metadata.complexTypes.size).toBe(0);
+		expect(metadata.enumTypeNames.size).toBe(0);
+		expect(metadata.entityTypeNames.size).toBe(0);
+	});
+});
+
+describe('parseMetadataXml complex and enum types', () => {
+	const metadata = parseMetadataXml(EDMX_COMPLEX_AND_ENUM_TYPES);
+
+	it('splices the declarations into the base fixture', () => {
+		expect(EDMX_COMPLEX_AND_ENUM_TYPES).not.toBe(SYNTHETIC_EDMX_V4);
+	});
+
+	it('parses complex type properties with type, nullability, and collection flag', () => {
+		expect(metadata.complexTypes.get('DocumentLine')).toEqual({
+			name: 'DocumentLine',
+			properties: [
+				{ name: 'ItemCode', edmType: 'Edm.String', isCollection: false, nullable: true },
+				{ name: 'LineNum', edmType: 'Edm.Int32', isCollection: false, nullable: false },
+				{ name: 'Quantity', edmType: 'Edm.Double', isCollection: false, nullable: true },
+				{ name: 'TaxOnly', edmType: 'SAPB1.BoYesNoEnum', isCollection: false, nullable: true },
+				{
+					name: 'Address',
+					edmType: 'SAPB1.AddressExtension',
+					isCollection: false,
+					nullable: true,
+				},
+				{
+					name: 'LineTaxJurisdictions',
+					edmType: 'Collection(SAPB1.LineTaxJurisdiction)',
+					isCollection: true,
+					nullable: true,
+				},
+			],
+		});
+	});
+
+	it('reads attributes regardless of their order', () => {
+		expect(metadata.complexTypes.get('AddressExtension')?.properties).toEqual([
+			{ name: 'ShipToStreet', edmType: 'Edm.String', isCollection: false, nullable: true },
+			{ name: 'BillToCity', edmType: 'Edm.String', isCollection: false, nullable: false },
+		]);
+		expect(metadata.complexTypes.has('LineTaxJurisdiction')).toBe(true);
+		expect(metadata.enumTypeNames.has('BoStatus')).toBe(true);
+	});
+
+	it('gives a self-closing complex type an empty property list', () => {
+		expect(metadata.complexTypes.get('DocumentDistributedExpense')).toEqual({
+			name: 'DocumentDistributedExpense',
+			properties: [],
+		});
+	});
+
+	it('keeps the first declaration of a complex type declared twice', () => {
+		expect(metadata.complexTypes.get('Event')?.properties.map((p) => p.name)).toEqual([
+			'WebhookID',
+		]);
+	});
+
+	it('collects every enum type name', () => {
+		expect([...metadata.enumTypeNames]).toEqual(['BoYesNoEnum', 'BoStatus']);
+	});
+
+	it('collects every entity type name, including ones no entity set exposes', () => {
+		expect([...metadata.entityTypeNames]).toEqual([
+			'Order',
+			'SalesTaxAuthority',
+			'Item',
+			'Ghost',
+			'Report',
+		]);
+	});
+
+	it('leaves the entity and operation output unchanged', () => {
+		const base = parseMetadataXml(SYNTHETIC_EDMX_V4);
+
+		expect(metadata.entities).toEqual(base.entities);
+		expect(metadata.unboundOperations).toEqual(base.unboundOperations);
 	});
 });
 
