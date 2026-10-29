@@ -153,7 +153,7 @@ describe('parseMetadataXml', () => {
 		expect(metadata.entities.size).toBe(0);
 		expect(metadata.unboundOperations).toEqual([]);
 		expect(metadata.complexTypes.size).toBe(0);
-		expect(metadata.enumTypeNames.size).toBe(0);
+		expect(metadata.enumTypes.size).toBe(0);
 		expect(metadata.entityTypes.size).toBe(0);
 	});
 });
@@ -189,7 +189,10 @@ describe('parseMetadataXml complex and enum types', () => {
 			{ name: 'BillToCity', edmType: 'Edm.String', nullable: false },
 		]);
 		expect(metadata.complexTypes.has('LineTaxJurisdiction')).toBe(true);
-		expect(metadata.enumTypeNames.has('BoStatus')).toBe(true);
+		expect(metadata.enumTypes.get('BoStatus')?.members).toEqual([
+			{ name: 'bost_Close', value: '1' },
+			{ name: 'bost_Open', value: '0' },
+		]);
 	});
 
 	it('gives a self-closing complex type an empty property list', () => {
@@ -205,8 +208,43 @@ describe('parseMetadataXml complex and enum types', () => {
 		]);
 	});
 
-	it('collects every enum type name', () => {
-		expect([...metadata.enumTypeNames]).toEqual(['BoYesNoEnum', 'BoStatus']);
+	it('collects every enum type once, in declaration order', () => {
+		expect([...metadata.enumTypes.keys()]).toEqual([
+			'BoYesNoEnum',
+			'BoStatus',
+			'BoPermissionFlags',
+			'EmptyEnum',
+		]);
+	});
+
+	it('parses enum members with their values, in declaration order', () => {
+		expect(metadata.enumTypes.get('BoYesNoEnum')).toEqual({
+			name: 'BoYesNoEnum',
+			isFlags: false,
+			members: [
+				{ name: 'tNO', value: '0' },
+				{ name: 'tYES', value: '1' },
+			],
+		});
+	});
+
+	it('keeps the first declaration of an enum type declared twice', () => {
+		expect(metadata.enumTypes.get('BoStatus')?.members.map((m) => m.name)).toEqual([
+			'bost_Close',
+			'bost_Open',
+		]);
+	});
+
+	it('marks a flags enum', () => {
+		expect(metadata.enumTypes.get('BoPermissionFlags')?.isFlags).toBe(true);
+	});
+
+	it('gives a self-closing enum type an empty member list', () => {
+		expect(metadata.enumTypes.get('EmptyEnum')).toEqual({
+			name: 'EmptyEnum',
+			isFlags: false,
+			members: [],
+		});
 	});
 
 	it('collects every entity type, including ones no entity set exposes', () => {

@@ -8,6 +8,7 @@ import { loadServiceLayerMetadata } from '../helpers/credentials';
 import { getEntityPropertyShape } from '../helpers/entityBody';
 import { classifyEdmType } from '../helpers/odataLiteral';
 import { getExpandedParameter, getOperationParameterShape } from '../helpers/serviceOperation';
+import { classifyServiceLayerType } from '../helpers/typeClassification';
 import type {
 	EntityPropertyDefinition,
 	OperationParameter,
@@ -27,6 +28,30 @@ function mapEdmTypeToFieldType(edmType: string): ResourceMapperField['type'] {
 	}
 
 	return 'string';
+}
+
+/**
+ * The field of a property or parameter entered as a single value. An enum gets
+ * a dropdown of its member names, sent unchanged (e.g. `tYES`); a flags enum,
+ * whose value may combine several members, and an enum without members keep a
+ * free-text field.
+ */
+function getSingleValueField(
+	edmType: string,
+	metadata: ServiceLayerMetadata,
+): Pick<ResourceMapperField, 'type' | 'options'> {
+	const typeInfo = classifyServiceLayerType(edmType, metadata);
+	const enumType =
+		typeInfo.category === 'enum' ? metadata.enumTypes.get(typeInfo.typeName) : undefined;
+
+	if (enumType !== undefined && !enumType.isFlags && enumType.members.length > 0) {
+		return {
+			type: 'options',
+			options: enumType.members.map((member) => ({ name: member.name, value: member.name })),
+		};
+	}
+
+	return { type: mapEdmTypeToFieldType(edmType) };
 }
 
 /**
@@ -60,8 +85,9 @@ async function getSelectedEntityWithMetadata(
  *
  * Collection properties (e.g. `Orders.DocumentLines`) are offered as `array`
  * fields and single complex properties (e.g. `AddressExtension`) as `object`
- * fields, both with a JSON editor; see `getEntityPropertyShape`. Navigation
- * properties are not parsed and never offered.
+ * fields, both with a JSON editor; see `getEntityPropertyShape`. Enum
+ * properties (e.g. `BoYesNoEnum`) are dropdowns of their member names.
+ * Navigation properties are not parsed and never offered.
  *
  * Key properties are included for Create (some entity sets require a
  * user-supplied key, e.g. `CardCode`; others are server-assigned, e.g.
@@ -96,8 +122,9 @@ export async function getEntityFields(this: ILoadOptionsFunctions): Promise<Reso
 
 /**
  * One mapper field per property of an entity or complex type. Collection and
- * complex properties get a JSON editor (`array`/`object`); see
- * `getEntityPropertyShape`.
+ * complex properties get a JSON editor (`array`/`object`), see
+ * `getEntityPropertyShape`; enum properties a dropdown, see
+ * `getSingleValueField`.
  */
 function getPropertyFields(
 	properties: EntityPropertyDefinition[],
@@ -109,7 +136,9 @@ function getPropertyFields(
 		return {
 			id: property.name,
 			displayName: property.name,
-			type: shape === 'primitive' ? mapEdmTypeToFieldType(property.edmType) : shape,
+			...(shape === 'primitive'
+				? getSingleValueField(property.edmType, metadata)
+				: { type: shape }),
 			required: false,
 			defaultMatch: false,
 			canBeUsedToMatch: false,
@@ -153,8 +182,8 @@ export async function getEntityKeys(this: ILoadOptionsFunctions): Promise<Resour
 
 /**
  * One mapper field per operation parameter. Simple parameters get a field of
- * the matching type; complex and collection parameters get a JSON editor
- * (`object`/`array`).
+ * the matching type, enum parameters a dropdown; complex and collection
+ * parameters get a JSON editor (`object`/`array`).
  *
  * No field is marked `required`: the Service Layer's metadata marks no
  * Action or Function parameter as non-nullable, so required-ness cannot be
@@ -170,7 +199,9 @@ function getOperationParameterFields(
 		return {
 			id: parameter.name,
 			displayName: parameter.name,
-			type: shape === 'primitive' ? mapEdmTypeToFieldType(parameter.edmType) : shape,
+			...(shape === 'primitive'
+				? getSingleValueField(parameter.edmType, metadata)
+				: { type: shape }),
 			required: false,
 			defaultMatch: false,
 			canBeUsedToMatch: false,

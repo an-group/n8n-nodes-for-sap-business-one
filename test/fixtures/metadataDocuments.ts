@@ -354,6 +354,11 @@ export const EDMX_BOUND_OPERATIONS = `<?xml version="1.0" encoding="UTF-8"?>
  * without `OpenType`, one self-closing complex type with no properties, and
  * `Event` declared twice (here with differing bodies, so the test can tell
  * which declaration is kept). Attribute order varies on purpose.
+ *
+ * The real document has no flags enum, no member-less enum and no enum
+ * declared twice; `BoPermissionFlags`, `EmptyEnum` and the second `BoStatus`
+ * cover them anyway. `BoStatus` lists `bost_Close` before `bost_Open` to
+ * prove that members keep their declaration order.
  */
 export const COMPLEX_AND_ENUM_TYPE_DECLARATIONS = `
       <ComplexType Name="DocumentLine">
@@ -383,8 +388,17 @@ export const COMPLEX_AND_ENUM_TYPE_DECLARATIONS = `
         <Member Name="tYES" Value="1"/>
       </EnumType>
       <EnumType Name="BoStatus" UnderlyingType="Edm.Int32" IsFlags="false">
-        <Member Name="bost_Open" Value="0"/>
+        <Member Name="bost_Close" Value="1"/>
+        <Member Value="0" Name="bost_Open"/>
       </EnumType>
+      <EnumType Name="BoStatus" UnderlyingType="Edm.Int32" IsFlags="false">
+        <Member Name="SecondDeclaration" Value="0"/>
+      </EnumType>
+      <EnumType IsFlags="true" Name="BoPermissionFlags" UnderlyingType="Edm.Int32">
+        <Member Name="pfRead" Value="1"/>
+        <Member Name="pfWrite" Value="2"/>
+      </EnumType>
+      <EnumType Name="EmptyEnum" UnderlyingType="Edm.Int32"/>
 `;
 
 /** `SYNTHETIC_EDMX_V4` with `COMPLEX_AND_ENUM_TYPE_DECLARATIONS` spliced in ahead of the container. */
@@ -398,8 +412,9 @@ export const EDMX_COMPLEX_AND_ENUM_TYPES = SYNTHETIC_EDMX_V4.replace(
  * distinguishes: primitive, enum, single complex (`AddressExtension`), complex
  * collection (`DocumentLines`, as on `Orders`), plus shapes the real Service
  * Layer document does not use on entity types but the classifier still has to
- * place — an entity-typed property, a primitive collection, and a type the
- * document never declares. `KeyOnly` has nothing left to set on Update.
+ * place — an entity-typed property, a primitive collection, a type the
+ * document never declares, a flags enum and an enum without members.
+ * `KeyOnly` has nothing left to set on Update.
  */
 export const EDMX_STRUCTURED_PROPERTIES = `<?xml version="1.0" encoding="UTF-8"?>
 <edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
@@ -418,6 +433,8 @@ export const EDMX_STRUCTURED_PROPERTIES = `<?xml version="1.0" encoding="UTF-8"?
         <Property Name="Approver" Type="SAPB1.Employee"/>
         <Property Name="Tags" Type="Collection(Edm.String)"/>
         <Property Name="Mystery" Type="SAPB1.Undeclared"/>
+        <Property Name="Permissions" Type="SAPB1.BoPermissionFlags"/>
+        <Property Name="Placeholder" Type="SAPB1.EmptyEnum"/>
       </EntityType>
 
       <EntityType Name="Employee" OpenType="true">
@@ -446,6 +463,11 @@ export const EDMX_STRUCTURED_PROPERTIES = `<?xml version="1.0" encoding="UTF-8"?
         <Member Name="bost_Open" Value="0"/>
         <Member Name="bost_Close" Value="1"/>
       </EnumType>
+      <EnumType IsFlags="true" Name="BoPermissionFlags" UnderlyingType="Edm.Int32">
+        <Member Name="pfRead" Value="1"/>
+        <Member Name="pfWrite" Value="2"/>
+      </EnumType>
+      <EnumType Name="EmptyEnum" UnderlyingType="Edm.Int32"/>
 
       <EntityContainer Name="SAPB1">
         <EntitySet EntityType="SAPB1.Document" Name="Orders"/>
