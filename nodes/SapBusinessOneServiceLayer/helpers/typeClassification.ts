@@ -1,7 +1,7 @@
 import { stripNamespace } from './metadata';
 import type { ServiceLayerMetadata, ServiceLayerTypeInfo } from './types';
 
-type TypeRegistry = Pick<ServiceLayerMetadata, 'complexTypes' | 'enumTypeNames' | 'entityTypes'>;
+type TypeRegistry = Pick<ServiceLayerMetadata, 'complexTypes' | 'enumTypes' | 'entityTypes'>;
 
 const COLLECTION_PATTERN = /^Collection\((.*)\)$/;
 
@@ -35,7 +35,7 @@ export function classifyServiceLayerType(
 		return { category: 'unknown', isCollection, typeName };
 	}
 
-	if (metadata.enumTypeNames.has(typeName)) {
+	if (metadata.enumTypes.has(typeName)) {
 		return { category: 'enum', isCollection, typeName };
 	}
 

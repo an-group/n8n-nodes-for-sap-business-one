@@ -70,6 +70,17 @@ function bodyField(id: string, type: ResourceMapperField['type']): ResourceMappe
 	};
 }
 
+/** `bodyField` for an enum property: a dropdown of its member names. */
+function enumField(id: string, members: string[]): ResourceMapperField {
+	return {
+		...bodyField(id, 'options'),
+		options: members.map((member) => ({ name: member, value: member })),
+	};
+}
+
+/** `BoStatus` members in declaration order, as the fixtures declare them. */
+const BO_STATUS_MEMBERS = ['bost_Open', 'bost_Close'];
+
 /** The exact shape `getEntityKeys` emits for one key property. */
 function keyField(id: string, type: ResourceMapperField['type']): ResourceMapperField {
 	return {
@@ -166,16 +177,28 @@ describe('getEntityFields', () => {
 		await expect(fieldsFor('Orders', 'update', EDMX_STRUCTURED_PROPERTIES)).resolves.toEqual({
 			fields: [
 				bodyField('CardCode', 'string'),
-				// Enums keep their free-text field until they get dropdowns (#27).
-				bodyField('DocumentStatus', 'string'),
+				enumField('DocumentStatus', BO_STATUS_MEMBERS),
 				bodyField('AddressExtension', 'object'),
 				bodyField('DocumentLines', 'array'),
 				bodyField('Approver', 'object'),
 				bodyField('Tags', 'array'),
 				// A type the metadata never declares falls back to the old behaviour.
 				bodyField('Mystery', 'string'),
+				// A flags value may combine members, and an enum without members has
+				// nothing to offer: both keep a text field.
+				bodyField('Permissions', 'string'),
+				bodyField('Placeholder', 'string'),
 			],
 		});
+	});
+
+	it('offers the enum members as options whose value is the member name', async () => {
+		const { fields } = await fieldsFor('Orders', 'create', EDMX_STRUCTURED_PROPERTIES);
+
+		expect(fields.find((field) => field.id === 'DocumentStatus')?.options).toEqual([
+			{ name: 'bost_Open', value: 'bost_Open' },
+			{ name: 'bost_Close', value: 'bost_Close' },
+		]);
 	});
 
 	it('excludes every part of a composite key from an update body', async () => {
@@ -230,6 +253,8 @@ describe('getEntityFields', () => {
 				bodyField('Active', 'number'),
 				bodyField('Ref', 'number'),
 				bodyField('DueDate', 'dateTime'),
+				// This document never declares BoYesNoEnum, so there are no members
+				// to offer.
 				bodyField('Valid', 'string'),
 			],
 		});
@@ -379,7 +404,7 @@ describe('getServiceOperationParameters: a single complex or entity parameter', 
 	const BANK_STATEMENT_FIELDS = [
 		bodyField('BankAccountKey', 'number'),
 		bodyField('StatementDate', 'dateTime'),
-		bodyField('Status', 'string'),
+		enumField('Status', BO_STATUS_MEMBERS),
 		bodyField('Address', 'object'),
 		bodyField('Lines', 'array'),
 	];
@@ -414,9 +439,9 @@ describe('getServiceOperationParameters: a single complex or entity parameter', 
 		});
 	});
 
-	it('maps an enum parameter to a plain field', async () => {
+	it('maps an enum parameter to a dropdown', async () => {
 		await expect(expandedParametersFor('StatusService_SetStatus')).resolves.toEqual({
-			fields: [bodyField('Code', 'string'), bodyField('Status', 'string')],
+			fields: [bodyField('Code', 'string'), enumField('Status', BO_STATUS_MEMBERS)],
 		});
 	});
 

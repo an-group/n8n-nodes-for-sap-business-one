@@ -147,14 +147,29 @@ export interface EntityTypeDefinition {
 	properties: EntityPropertyDefinition[];
 }
 
+/** One member of an `EnumType`, e.g. `tYES` with the value `1`. */
+export interface EnumMemberDefinition {
+	name: string;
+	value: string;
+}
+
+/** An `EnumType` such as `BoYesNoEnum`, with its members in declaration order. */
+export interface EnumTypeDefinition {
+	/** Unqualified type name, e.g. `BoYesNoEnum`. */
+	name: string;
+	/** `IsFlags="true"`: a value may combine several members. */
+	isFlags: boolean;
+	members: EnumMemberDefinition[];
+}
+
 /** Parsed shape of a Service Layer instance's `/$metadata` (EDMX) document. */
 export interface ServiceLayerMetadata {
 	entities: Map<string, EntityDefinition>;
 	unboundOperations: UnboundOperationDefinition[];
 	/** Keyed by unqualified type name. */
 	complexTypes: Map<string, ComplexTypeDefinition>;
-	/** Unqualified names of every declared `EnumType`, e.g. `BoYesNoEnum`. */
-	enumTypeNames: Set<string>;
+	/** Every declared `EnumType`, keyed by unqualified name, e.g. `BoYesNoEnum`. */
+	enumTypes: Map<string, EnumTypeDefinition>;
 	/**
 	 * Every declared `EntityType`, keyed by unqualified name, including those no
 	 * entity set exposes — operation parameters reference entity types directly.

@@ -6,18 +6,15 @@ import type { EntityDefinition, EntityPropertyDefinition, ServiceLayerMetadata }
 
 type NodeContext = Pick<FunctionsBase, 'getNode'>;
 
-export type TypeRegistry = Pick<
-	ServiceLayerMetadata,
-	'complexTypes' | 'enumTypeNames' | 'entityTypes'
->;
+export type TypeRegistry = Pick<ServiceLayerMetadata, 'complexTypes' | 'enumTypes' | 'entityTypes'>;
 
 /**
  * How an entity property's value is entered and sent in a Create/Update body.
  *
  * Every collection (e.g. `DocumentLines`) is an `array` and every single
  * complex or entity-typed property (e.g. `AddressExtension`) an `object`, both
- * entered as JSON. Primitive, enum, and undeclared types stay `primitive`,
- * so their fields keep the type derived from the EDM name.
+ * entered as JSON. Primitive, enum, and undeclared types stay `primitive`:
+ * a single value, sent unchanged (an enum as its member name).
  */
 export function getEntityPropertyShape(
 	edmType: string,

@@ -11,6 +11,8 @@ import type {
 	EntityDefinition,
 	EntityKeyProperty,
 	EntityPropertyDefinition,
+	EnumMemberDefinition,
+	EnumTypeDefinition,
 	OperationParameter,
 	ServiceLayerCredentials,
 	ServiceLayerMetadata,
@@ -219,21 +221,46 @@ function parseComplexTypes(xml: string): Map<string, ComplexTypeDefinition> {
 	return complexTypes;
 }
 
-/** Collects every `EnumType` name; members are not needed yet. */
-function parseEnumTypeNames(xml: string): Set<string> {
-	const names = new Set<string>();
-	const pattern = /<EnumType\s+([^>]*?)\/?>/g;
+function parseEnumMembers(blockXml: string): EnumMemberDefinition[] {
+	const members: EnumMemberDefinition[] = [];
+	const pattern = /<Member\s+([^>]*?)\/>/g;
+	let match: RegExpExecArray | null;
+
+	while ((match = pattern.exec(blockXml)) !== null) {
+		const name = getAttribute(match[1], 'Name');
+
+		if (name !== undefined) {
+			members.push({ name, value: getAttribute(match[1], 'Value') ?? '' });
+		}
+	}
+
+	return members;
+}
+
+/**
+ * Parses every `EnumType` with its members in declaration order. A name
+ * declared twice keeps its first definition, as for `ComplexType`.
+ */
+function parseEnumTypes(xml: string): Map<string, EnumTypeDefinition> {
+	const enumTypes = new Map<string, EnumTypeDefinition>();
+	const pattern = /<EnumType\s+([^>]*?)(?:\/>|>([\s\S]*?)<\/EnumType>)/g;
 	let match: RegExpExecArray | null;
 
 	while ((match = pattern.exec(xml)) !== null) {
 		const name = getAttribute(match[1], 'Name');
 
-		if (name !== undefined) {
-			names.add(name);
+		if (name === undefined || enumTypes.has(name)) {
+			continue;
 		}
+
+		enumTypes.set(name, {
+			name,
+			isFlags: getAttribute(match[1], 'IsFlags') === 'true',
+			members: parseEnumMembers(match[2] ?? ''),
+		});
 	}
 
-	return names;
+	return enumTypes;
 }
 
 interface RawImportDefinition {
@@ -389,7 +416,7 @@ export function parseMetadataXml(xml: string): ServiceLayerMetadata {
 		entities,
 		unboundOperations,
 		complexTypes: parseComplexTypes(xml),
-		enumTypeNames: parseEnumTypeNames(xml),
+		enumTypes: parseEnumTypes(xml),
 		entityTypes: new Map(
 			[...entityTypesByName].map(([name, { properties }]) => [name, { name, properties }]),
 		),
