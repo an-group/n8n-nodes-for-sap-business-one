@@ -91,8 +91,6 @@ export interface EntityKeyProperty {
 export interface EntityPropertyDefinition {
 	name: string;
 	edmType: string;
-	/** True for navigation/complex-collection properties, e.g. `DocumentLines`. */
-	isCollection: boolean;
 	nullable: boolean;
 }
 
@@ -139,6 +137,16 @@ export interface ComplexTypeDefinition {
 	properties: EntityPropertyDefinition[];
 }
 
+/**
+ * An entity type's properties, independent of any entity set. Operation
+ * parameters reference entity types directly (e.g. `SAPB1.Document`).
+ */
+export interface EntityTypeDefinition {
+	/** Unqualified type name, e.g. `Document`. */
+	name: string;
+	properties: EntityPropertyDefinition[];
+}
+
 /** Parsed shape of a Service Layer instance's `/$metadata` (EDMX) document. */
 export interface ServiceLayerMetadata {
 	entities: Map<string, EntityDefinition>;
@@ -148,10 +156,10 @@ export interface ServiceLayerMetadata {
 	/** Unqualified names of every declared `EnumType`, e.g. `BoYesNoEnum`. */
 	enumTypeNames: Set<string>;
 	/**
-	 * Unqualified names of every declared `EntityType`, including those no
+	 * Every declared `EntityType`, keyed by unqualified name, including those no
 	 * entity set exposes — operation parameters reference entity types directly.
 	 */
-	entityTypeNames: Set<string>;
+	entityTypes: Map<string, EntityTypeDefinition>;
 }
 
 /**

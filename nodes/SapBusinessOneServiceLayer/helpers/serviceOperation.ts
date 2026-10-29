@@ -4,13 +4,16 @@ import { NodeOperationError } from 'n8n-workflow';
 import { getServiceLayerCredentials } from './credentials';
 import { toCustomApiCallOutput } from './customApiCall';
 import { buildEntityKeySegment } from './entityPath';
+import { toPropertyValue, type TypeRegistry } from './entityBody';
 import { getServiceLayerMetadata } from './metadata';
 import { encodeODataLiteral } from './odataLiteral';
 import { serviceLayerApiRequest } from './request';
 import { isUnset, parseStructuredValue } from './structuredValue';
+import { classifyServiceLayerType } from './typeClassification';
 import type {
 	BoundOperationDefinition,
 	EntityDefinition,
+	EntityPropertyDefinition,
 	OperationParameter,
 	ServiceLayerCredentialContext,
 	ServiceLayerCredentials,
@@ -23,38 +26,101 @@ type NodeContext = Pick<FunctionsBase, 'getNode'>;
 /**
  * How an operation parameter's value is entered and sent.
  *
- * `primitive` covers `Edm.*` types. Every other non-collection type is treated
- * as a structured `object` entered as JSON. That includes enum types, which the
- * parser cannot tell apart from complex types yet; no unbound operation in the
- * analysed metadata takes an enum parameter.
+ * `primitive` covers `Edm.*` and enum types. Every other non-collection type
+ * is a structured `object` entered as JSON, including a type the metadata does
+ * not declare.
  */
 export type OperationParameterShape = 'primitive' | 'object' | 'array';
 
-export function getOperationParameterShape(edmType: string): OperationParameterShape {
-	if (edmType.startsWith('Collection(')) {
+export function getOperationParameterShape(
+	edmType: string,
+	metadata: TypeRegistry,
+): OperationParameterShape {
+	const typeInfo = classifyServiceLayerType(edmType, metadata);
+
+	if (typeInfo.isCollection) {
 		return 'array';
 	}
 
-	if (edmType.startsWith('Edm.')) {
+	if (typeInfo.category === 'primitive' || typeInfo.category === 'enum') {
 		return 'primitive';
 	}
 
 	return 'object';
 }
 
+/** A parameter whose type's properties are entered as individual mapper fields. */
+export interface ExpandedParameter {
+	parameter: OperationParameter;
+	properties: EntityPropertyDefinition[];
+}
+
 /**
- * Collects the values to send, in metadata order. Only parameters the
- * operation declares are read, so a stale mapper entry left behind by a
- * changed schema is never sent. Fields left empty are omitted; the Service
- * Layer reports a missing value itself, since the metadata marks no operation
- * parameter as required.
+ * Returns the operation's parameter to expand into its type's properties, or
+ * `undefined` to keep one field per parameter. Only an operation whose single
+ * parameter is one complex or entity value (e.g. `BankStatementParams`) is
+ * expanded; collection parameters and operations with several parameters are
+ * entered as before.
+ */
+export function getExpandedParameter(
+	parameters: OperationParameter[],
+	metadata: TypeRegistry,
+): ExpandedParameter | undefined {
+	if (parameters.length !== 1) {
+		return undefined;
+	}
+
+	const [parameter] = parameters;
+	const typeInfo = classifyServiceLayerType(parameter.edmType, metadata);
+
+	if (typeInfo.isCollection) {
+		return undefined;
+	}
+
+	const properties =
+		typeInfo.category === 'complex'
+			? metadata.complexTypes.get(typeInfo.typeName)?.properties
+			: typeInfo.category === 'entity'
+				? metadata.entityTypes.get(typeInfo.typeName)?.properties
+				: undefined;
+
+	return properties === undefined || properties.length === 0
+		? undefined
+		: { parameter, properties };
+}
+
+/** A parameter value ready to send, with the shape it was resolved as. */
+export interface ResolvedParameterValue {
+	parameter: OperationParameter;
+	shape: OperationParameterShape;
+	value: unknown;
+}
+
+/**
+ * Collects the values to send, in metadata order. Only parameters (or, for an
+ * expanded parameter, properties) the operation declares are read, so a stale
+ * mapper entry left behind by a changed schema is never sent. Fields left
+ * empty are omitted, and an expanded parameter without any value is left out
+ * entirely; the Service Layer reports a missing value itself, since the
+ * metadata marks no operation parameter as required.
  */
 export function resolveOperationParameterValues(
 	context: NodeContext,
 	parameters: OperationParameter[],
+	metadata: TypeRegistry,
 	mappedValues: IDataObject,
-): Array<{ parameter: OperationParameter; value: unknown }> {
-	const resolved: Array<{ parameter: OperationParameter; value: unknown }> = [];
+): ResolvedParameterValue[] {
+	const expanded = getExpandedParameter(parameters, metadata);
+
+	if (expanded !== undefined) {
+		const value = toExpandedValue(context, expanded.properties, metadata, mappedValues);
+
+		return Object.keys(value).length === 0
+			? []
+			: [{ parameter: expanded.parameter, shape: 'object', value }];
+	}
+
+	const resolved: ResolvedParameterValue[] = [];
 
 	for (const parameter of parameters) {
 		const raw = mappedValues[parameter.name];
@@ -63,10 +129,11 @@ export function resolveOperationParameterValues(
 			continue;
 		}
 
-		const shape = getOperationParameterShape(parameter.edmType);
+		const shape = getOperationParameterShape(parameter.edmType, metadata);
 
 		resolved.push({
 			parameter,
+			shape,
 			value:
 				shape === 'primitive'
 					? raw
@@ -82,6 +149,32 @@ export function resolveOperationParameterValues(
 	return resolved;
 }
 
+/** Builds an expanded parameter's object from its properties' mapper fields. */
+function toExpandedValue(
+	context: NodeContext,
+	properties: EntityPropertyDefinition[],
+	metadata: TypeRegistry,
+	mappedValues: IDataObject,
+): IDataObject {
+	const value: IDataObject = {};
+
+	for (const property of properties) {
+		const raw = mappedValues[property.name];
+
+		if (isUnset(raw)) {
+			continue;
+		}
+
+		const propertyValue = toPropertyValue(context, property, metadata, raw);
+
+		if (propertyValue !== undefined) {
+			value[property.name] = propertyValue;
+		}
+	}
+
+	return value;
+}
+
 /**
  * Builds a function call path with its parameters inline, e.g.
  * `/SBOBobService_GetDueDate(CardCode='C1',RefDate='20260101')`. A function
@@ -90,11 +183,11 @@ export function resolveOperationParameterValues(
 export function buildFunctionPath(
 	context: NodeContext,
 	operationName: string,
-	values: Array<{ parameter: OperationParameter; value: unknown }>,
+	values: ResolvedParameterValue[],
 ): string {
 	const segments = values.map(
-		({ parameter, value }) =>
-			`${parameter.name}=${encodeFunctionParameter(context, operationName, parameter, value)}`,
+		(resolved) =>
+			`${resolved.parameter.name}=${encodeFunctionParameter(context, operationName, resolved)}`,
 	);
 
 	return `/${operationName}(${segments.join(',')})`;
@@ -104,10 +197,9 @@ export function buildFunctionPath(
 function encodeFunctionParameter(
 	context: NodeContext,
 	operationName: string,
-	parameter: OperationParameter,
-	value: unknown,
+	{ parameter, shape, value }: ResolvedParameterValue,
 ): string {
-	if (getOperationParameterShape(parameter.edmType) !== 'primitive') {
+	if (shape !== 'primitive') {
 		throw new NodeOperationError(
 			context.getNode(),
 			`Parameter "${parameter.name}" of function "${operationName}" cannot be sent in the URL`,
@@ -178,22 +270,25 @@ export function buildBoundFunctionPath(
 	context: NodeContext,
 	keySegment: string,
 	operation: BoundOperationDefinition,
-	values: Array<{ parameter: OperationParameter; value: unknown }>,
+	values: ResolvedParameterValue[],
 ): string {
-	const queryOptions = values.flatMap(({ parameter, value }) =>
-		isSqlQueryParameterList(operation, parameter)
-			? parseSqlQueryParameterList(context, String(value))
-			: [`${parameter.name}=${encodeFunctionParameter(context, operation.name, parameter, value)}`],
+	const queryOptions = values.flatMap((resolved) =>
+		isSqlQueryParameterList(operation, resolved.parameter)
+			? parseSqlQueryParameterList(context, String(resolved.value))
+			: [
+					`${resolved.parameter.name}=${encodeFunctionParameter(context, operation.name, resolved)}`,
+				],
 	);
 	const path = `/${keySegment}/${operation.name}`;
 
 	return queryOptions.length === 0 ? path : `${path}?${queryOptions.join('&')}`;
 }
 
-/** An action's parameter values as its JSON body. */
-function toActionBody(
-	values: Array<{ parameter: OperationParameter; value: unknown }>,
-): IDataObject {
+/**
+ * An action's parameter values as its JSON body. An expanded parameter is
+ * wrapped under its name like any other, e.g. `{ "BankStatementParams": { ... } }`.
+ */
+function toActionBody(values: ResolvedParameterValue[]): IDataObject {
 	const body: IDataObject = {};
 
 	for (const { parameter, value } of values) {
@@ -248,6 +343,7 @@ export async function executeServiceOperation(
 	const values = resolveOperationParameterValues(
 		this,
 		operation.parameters,
+		metadata,
 		parameters.mappedValues,
 	);
 
@@ -310,6 +406,7 @@ export async function executeBoundOperation(
 	credentials: ServiceLayerCredentials,
 	credentialId: string | null | undefined,
 	entity: EntityDefinition,
+	metadata: TypeRegistry,
 	parameters: BoundOperationParameters,
 ): Promise<IDataObject> {
 	const operation = findBoundOperation(this, entity, parameters.operationName);
@@ -317,6 +414,7 @@ export async function executeBoundOperation(
 	const values = resolveOperationParameterValues(
 		this,
 		operation.parameters,
+		metadata,
 		parameters.mappedValues,
 	);
 

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { SapBusinessOneServiceLayer } from '../nodes/SapBusinessOneServiceLayer/SapBusinessOneServiceLayer.node';
 import {
 	EDMX_BOUND_OPERATIONS,
+	EDMX_EXPANDED_PARAMETERS,
 	EDMX_SERVICE_OPERATIONS,
 	EDMX_STRUCTURED_PROPERTIES,
 	SYNTHETIC_EDMX_V4,
@@ -62,7 +63,7 @@ function entitySetParams(
 	extra: Record<string, ParameterValue> = {},
 	entitySet = 'Orders',
 ): Record<string, ParameterValue> {
-	return { resource: 'entitySet', operation, entitySet, options: {}, ...extra };
+	return { resource: 'entitySet', operation, entitySet, replaceCollections: false, ...extra };
 }
 
 describe('Entity Set operations', () => {
@@ -434,18 +435,18 @@ describe('Entity Set: complex and collection fields', () => {
 });
 
 describe('Entity Set: Replace Collections', () => {
-	function updateParams(options: Record<string, unknown>) {
+	function updateParams(replaceCollections: boolean) {
 		return entitySetParams('update', {
 			keyFields: mapperValue({ DocEntry: 45 }),
 			entityFields: mapperValue({ CardCode: 'C2' }),
-			options,
+			replaceCollections,
 		});
 	}
 
 	it('sends the replace header when the option is on', async () => {
 		const test = harness({
 			routes: { 'PATCH /Orders(45)': { statusCode: 204, body: '' } },
-			parameters: updateParams({ replaceCollections: true }),
+			parameters: updateParams(true),
 		});
 
 		await test.run();
@@ -455,21 +456,18 @@ describe('Entity Set: Replace Collections', () => {
 		expect(request.headers?.Cookie).toBe('B1SESSION=sess-1');
 	});
 
-	it.each([{}, { replaceCollections: false }])(
-		'sends no extra header when the option is %o',
-		async (options) => {
-			const test = harness({
-				routes: { 'PATCH /Orders(45)': { statusCode: 204, body: '' } },
-				parameters: updateParams(options),
-			});
+	it('sends no extra header when the option is off', async () => {
+		const test = harness({
+			routes: { 'PATCH /Orders(45)': { statusCode: 204, body: '' } },
+			parameters: updateParams(false),
+		});
 
-			await test.run();
+		await test.run();
 
-			expect(test.http.callsFor('PATCH /Orders(45)')[0].headers).toEqual({
-				Cookie: 'B1SESSION=sess-1',
-			});
-		},
-	);
+		expect(test.http.callsFor('PATCH /Orders(45)')[0].headers).toEqual({
+			Cookie: 'B1SESSION=sess-1',
+		});
+	});
 
 	it('keeps the replace header when the request is retried after an expired session', async () => {
 		const test = harness({
@@ -483,7 +481,7 @@ describe('Entity Set: Replace Collections', () => {
 					{ statusCode: 204, body: '' },
 				],
 			},
-			parameters: updateParams({ replaceCollections: true }),
+			parameters: updateParams(true),
 		});
 
 		await test.run();
@@ -934,7 +932,7 @@ describe('Service Operation', () => {
 		expect(output[0][0].json).toEqual({ success: true, statusCode: 204 });
 	});
 
-	it('parses a complex parameter entered as JSON text', async () => {
+	it('parses a parameter of a type the metadata does not declare from JSON text', async () => {
 		const test = harness({
 			routes: {
 				...SERVICE_OPERATION_METADATA,
@@ -1077,6 +1075,146 @@ describe('Service Operation', () => {
 		expect(output[0]).toHaveLength(1);
 		expect(output[0][0].pairedItem).toEqual({ item: 0 });
 		expect(String(output[0][0].json.error)).toContain('is not valid JSON');
+	});
+});
+
+const EXPANDED_PARAMETER_METADATA: RouteTable = {
+	'GET /$metadata': { statusCode: 200, body: EDMX_EXPANDED_PARAMETERS },
+};
+
+describe('Service Operation: a single complex or entity parameter', () => {
+	async function post(operation: string, values: Record<string, unknown> | null) {
+		const test = harness({
+			routes: {
+				...EXPANDED_PARAMETER_METADATA,
+				[`POST /${operation}`]: { statusCode: 200, body: { value: [] } },
+			},
+			parameters: serviceOperationParams(operation, values),
+		});
+		const error = await test.run().then(
+			() => undefined,
+			(caught: unknown) => caught,
+		);
+
+		return { test, error, calls: test.http.callsFor(`POST /${operation}`) };
+	}
+
+	it('wraps the fields under the parameter name, parsing nested JSON and leaving out empty fields', async () => {
+		const { calls } = await post('BankStatementsService_GetBankStatementList', {
+			BankAccountKey: 3,
+			StatementDate: '2026-01-31',
+			Status: 'bost_Open',
+			Address: '{"Street": "Main"}',
+			Lines: '[{"Amount": 1.5}]',
+		});
+
+		expect(calls[0].body).toEqual({
+			BankStatementParams: {
+				BankAccountKey: 3,
+				StatementDate: '2026-01-31',
+				Status: 'bost_Open',
+				Address: { Street: 'Main' },
+				Lines: [{ Amount: 1.5 }],
+			},
+		});
+	});
+
+	it('leaves out empty fields and keeps 0 as a value', async () => {
+		const { calls } = await post('BankStatementsService_GetBankStatementList', {
+			BankAccountKey: 0,
+			Status: '',
+			Address: null,
+		});
+
+		expect(calls[0].body).toEqual({ BankStatementParams: { BankAccountKey: 0 } });
+	});
+
+	it('wraps an entity-type parameter the same way', async () => {
+		const { calls } = await post('DocumentsService_Preview', { CardCode: 'C1' });
+
+		expect(calls[0].body).toEqual({ Document: { CardCode: 'C1' } });
+	});
+
+	it('sends no body when no field is filled in', async () => {
+		const { calls } = await post('BankStatementsService_GetBankStatementList', {
+			Status: '',
+		});
+
+		expect(calls[0].body).toBeUndefined();
+	});
+
+	it('ignores a mapper value the type does not declare, such as the parameter itself as JSON', async () => {
+		const { calls } = await post('BankStatementsService_GetBankStatementList', {
+			BankStatementParams: '{"BankAccountKey": 9}',
+			BankAccountKey: 3,
+		});
+
+		expect(calls[0].body).toEqual({ BankStatementParams: { BankAccountKey: 3 } });
+	});
+
+	it('rejects invalid JSON in a nested field before sending the request', async () => {
+		const { error, calls } = await post('BankStatementsService_GetBankStatementList', {
+			Address: '{nope',
+		});
+
+		expect(error).toBeInstanceOf(NodeOperationError);
+		expect(flattenErrorText(error)).toContain('field "Address" is not valid JSON');
+		expect(calls).toHaveLength(0);
+	});
+
+	it('keeps one JSON value per parameter for several complex parameters', async () => {
+		const { calls } = await post('MergeService_Merge', {
+			Source: '{"BankAccountKey": 1}',
+			Target: { BankAccountKey: 2 },
+		});
+
+		expect(calls[0].body).toEqual({
+			Source: { BankAccountKey: 1 },
+			Target: { BankAccountKey: 2 },
+		});
+	});
+
+	it('sends an enum parameter as a plain value', async () => {
+		const { calls } = await post('StatusService_SetStatus', { Code: 'A', Status: 'bost_Close' });
+
+		expect(calls[0].body).toEqual({ Code: 'A', Status: 'bost_Close' });
+	});
+
+	it('rejects a function whose parameter is expanded, since it cannot go in the URL', async () => {
+		const test = harness({
+			routes: EXPANDED_PARAMETER_METADATA,
+			parameters: serviceOperationParams('ReportService_GetReport', { BankAccountKey: 3 }),
+		});
+
+		const error = await test.run().catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(NodeOperationError);
+		expect(flattenErrorText(error)).toContain('cannot be sent in the URL');
+		expect(test.http.calls.filter((call) => call.url?.startsWith('/ReportService'))).toEqual([]);
+	});
+
+	it('wraps the parameter of a bound action the same way', async () => {
+		const test = harness({
+			routes: {
+				...EXPANDED_PARAMETER_METADATA,
+				'POST /BankPages(5)/Reconcile': { statusCode: 204, body: '' },
+			},
+			parameters: entitySetParams(
+				'executeOperation',
+				{
+					boundOperation: 'Reconcile',
+					keyFields: mapperValue({ Sequence: 5 }),
+					boundOperationParameters: mapperValue({ BankAccountKey: 3 }),
+				},
+				'BankPages',
+			),
+		});
+
+		await test.run();
+
+		expect(test.http.callsFor('POST /BankPages(5)/Reconcile')[0].body).toEqual({
+			BankStatementParams: { BankAccountKey: 3 },
+		});
 	});
 });
 

@@ -239,27 +239,18 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				},
 			},
 			{
-				displayName: 'Options',
-				name: 'options',
-				type: 'collection',
-				placeholder: 'Add option',
-				default: {},
+				displayName: 'Replace Collections',
+				name: 'replaceCollections',
+				type: 'boolean',
+				default: false,
 				displayOptions: {
 					show: {
 						resource: ['entitySet'],
 						operation: ['update'],
 					},
 				},
-				options: [
-					{
-						displayName: 'Replace Collections',
-						name: 'replaceCollections',
-						type: 'boolean',
-						default: false,
-						description:
-							'Whether to replace collection properties such as DocumentLines instead of merging them into the existing lines. Sends the B1S-ReplaceCollectionsOnPatch header.',
-					},
-				],
+				description:
+					'Whether to replace collection properties such as DocumentLines instead of merging them into the existing lines. Sends the B1S-ReplaceCollectionsOnPatch header.',
 			},
 			{
 				displayName: 'Return All',
@@ -582,7 +573,11 @@ export class SapBusinessOneServiceLayer implements INodeType {
 						getMappedValues(this, 'entityFields', itemIndex),
 					);
 
-					const options = this.getNodeParameter('options', itemIndex, {}) as IDataObject;
+					const replaceCollections = this.getNodeParameter(
+						'replaceCollections',
+						itemIndex,
+						false,
+					) as boolean;
 
 					// The Service Layer returns 204 No Content on a successful PATCH. Default
 					// JSON parsing is kept (not json: false): an empty body parses to '' without
@@ -595,9 +590,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 						body: fieldValues,
 						// Without it the Service Layer merges collections into the existing
 						// lines (see README, "Update and collections").
-						...(options.replaceCollections === true
-							? { headers: { 'B1S-ReplaceCollectionsOnPatch': 'true' } }
-							: {}),
+						...(replaceCollections ? { headers: { 'B1S-ReplaceCollectionsOnPatch': 'true' } } : {}),
 					});
 
 					returnData.push({
@@ -632,11 +625,18 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				}
 
 				if (operation === 'executeOperation') {
-					const json = await executeBoundOperation.call(this, credentials, credentialId, entity, {
-						operationName: this.getNodeParameter('boundOperation', itemIndex) as string,
-						keyValues: getMappedValues(this, 'keyFields', itemIndex),
-						mappedValues: getMappedValues(this, 'boundOperationParameters', itemIndex),
-					});
+					const json = await executeBoundOperation.call(
+						this,
+						credentials,
+						credentialId,
+						entity,
+						metadata,
+						{
+							operationName: this.getNodeParameter('boundOperation', itemIndex) as string,
+							keyValues: getMappedValues(this, 'keyFields', itemIndex),
+							mappedValues: getMappedValues(this, 'boundOperationParameters', itemIndex),
+						},
+					);
 					returnData.push({ json, pairedItem: { item: itemIndex } });
 					continue;
 				}

@@ -2,13 +2,13 @@ import type { FunctionsBase, IDataObject } from 'n8n-workflow';
 
 import { isUnset, parseStructuredValue, type StructuredShape } from './structuredValue';
 import { classifyServiceLayerType } from './typeClassification';
-import type { EntityDefinition, ServiceLayerMetadata } from './types';
+import type { EntityDefinition, EntityPropertyDefinition, ServiceLayerMetadata } from './types';
 
 type NodeContext = Pick<FunctionsBase, 'getNode'>;
 
-type TypeRegistry = Pick<
+export type TypeRegistry = Pick<
 	ServiceLayerMetadata,
-	'complexTypes' | 'enumTypeNames' | 'entityTypeNames'
+	'complexTypes' | 'enumTypeNames' | 'entityTypes'
 >;
 
 /**
@@ -63,24 +63,41 @@ export function buildEntityBody(
 			continue;
 		}
 
-		const shape = getEntityPropertyShape(property.edmType, metadata);
+		const value = toPropertyValue(context, property, metadata, raw);
 
-		if (shape === 'primitive') {
-			body[name] = raw;
-			continue;
+		if (value !== undefined) {
+			body[name] = value;
 		}
-
-		if (isUnset(raw)) {
-			continue;
-		}
-
-		body[name] = parseStructuredValue(
-			context,
-			{ kind: 'field', name, edmType: property.edmType },
-			shape,
-			raw,
-		) as IDataObject | IDataObject[];
 	}
 
 	return body;
+}
+
+/**
+ * Converts one mapper value of a declared property: primitives pass through,
+ * collection and complex values are parsed from JSON. Returns `undefined` for
+ * a structured value that is empty, which is then left out.
+ */
+export function toPropertyValue(
+	context: NodeContext,
+	property: EntityPropertyDefinition,
+	metadata: TypeRegistry,
+	raw: unknown,
+): IDataObject[string] | undefined {
+	const shape = getEntityPropertyShape(property.edmType, metadata);
+
+	if (shape === 'primitive') {
+		return raw as IDataObject[string];
+	}
+
+	if (isUnset(raw)) {
+		return undefined;
+	}
+
+	return parseStructuredValue(
+		context,
+		{ kind: 'field', name: property.name, edmType: property.edmType },
+		shape,
+		raw,
+	) as IDataObject | IDataObject[];
 }

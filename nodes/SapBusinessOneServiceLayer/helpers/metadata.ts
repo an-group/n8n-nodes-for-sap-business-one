@@ -73,7 +73,6 @@ interface RawPropertyDefinition {
 	name: string;
 	edmType: string;
 	nullable: boolean;
-	isCollection: boolean;
 }
 
 function parseProperties(blockXml: string): RawPropertyDefinition[] {
@@ -94,7 +93,6 @@ function parseProperties(blockXml: string): RawPropertyDefinition[] {
 			name,
 			edmType,
 			nullable: isNullable(attributeText),
-			isCollection: edmType.startsWith('Collection('),
 		});
 	}
 
@@ -305,15 +303,7 @@ export function parseMetadataXml(xml: string): ServiceLayerMetadata {
 				literalKind: classifyEdmType(property.edmType),
 			}));
 
-		entityTypesByName.set(typeName, {
-			keys,
-			properties: rawProperties.map(({ name, edmType, isCollection, nullable }) => ({
-				name,
-				edmType,
-				isCollection,
-				nullable,
-			})),
-		});
+		entityTypesByName.set(typeName, { keys, properties: rawProperties });
 	}
 
 	const boundFunctionsByType = new Map<string, BoundOperationDefinition[]>();
@@ -400,7 +390,9 @@ export function parseMetadataXml(xml: string): ServiceLayerMetadata {
 		unboundOperations,
 		complexTypes: parseComplexTypes(xml),
 		enumTypeNames: parseEnumTypeNames(xml),
-		entityTypeNames: new Set(entityTypesByName.keys()),
+		entityTypes: new Map(
+			[...entityTypesByName].map(([name, { properties }]) => [name, { name, properties }]),
+		),
 	};
 }
 
