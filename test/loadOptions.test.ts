@@ -2,8 +2,16 @@ import { NodeApiError, NodeOperationError } from 'n8n-workflow';
 import { describe, expect, it } from 'vitest';
 
 import { SERVICE_LAYER_CREDENTIAL_NAME } from '../nodes/SapBusinessOneServiceLayer/helpers/credentials';
-import { getEntitySets } from '../nodes/SapBusinessOneServiceLayer/methods/loadOptions';
-import { EDMX_EMPTY, EDMX_V1, SYNTHETIC_EDMX_V4 } from './fixtures/metadataDocuments';
+import {
+	getEntitySets,
+	getServiceOperations,
+} from '../nodes/SapBusinessOneServiceLayer/methods/loadOptions';
+import {
+	EDMX_EMPTY,
+	EDMX_SERVICE_OPERATIONS,
+	EDMX_V1,
+	SYNTHETIC_EDMX_V4,
+} from './fixtures/metadataDocuments';
 import { createTestCredentials } from './helpers/credentials';
 import { flattenErrorText } from './helpers/errors';
 import { createHttpFake, type FakeResponse, type RouteTable } from './helpers/http';
@@ -115,5 +123,55 @@ describe('getEntitySets', () => {
 		expect(text).not.toContain(credentials.password);
 		expect(text).not.toContain('B1SESSION');
 		expect(text).not.toContain(credentials.baseUrl);
+	});
+});
+
+describe('getServiceOperations', () => {
+	it('lists every unbound operation sorted by name, with its kind in the label', async () => {
+		const { context } = scenario({ metadataXml: EDMX_SERVICE_OPERATIONS });
+
+		await expect(getServiceOperations.call(context)).resolves.toEqual([
+			{
+				name: 'BankStatementsService_GetBankStatementList (Action)',
+				value: 'BankStatementsService_GetBankStatementList',
+			},
+			{ name: 'BatchService_PostLines (Action)', value: 'BatchService_PostLines' },
+			{ name: 'CleanupService_Run (Action)', value: 'CleanupService_Run' },
+			{
+				name: 'CompanyService_GetCompanyInfo (Function)',
+				value: 'CompanyService_GetCompanyInfo',
+			},
+			{ name: 'RateService_GetRate (Function)', value: 'RateService_GetRate' },
+			{ name: 'ReportService_GetReport (Function)', value: 'ReportService_GetReport' },
+			{ name: 'SBOBobService_GetDueDate (Function)', value: 'SBOBobService_GetDueDate' },
+			{
+				name: 'SBOBobService_SetSystemPermission (Action)',
+				value: 'SBOBobService_SetSystemPermission',
+			},
+		]);
+	});
+
+	it('omits bound operations', async () => {
+		const { context } = scenario();
+
+		const values = (await getServiceOperations.call(context)).map((option) => option.value);
+
+		expect(values).not.toContain('Close');
+		expect(values).not.toContain('GetOrderStatus');
+	});
+
+	it('returns an empty list rather than failing when the schema declares none', async () => {
+		const { context } = scenario({ metadataXml: EDMX_EMPTY });
+
+		await expect(getServiceOperations.call(context)).resolves.toEqual([]);
+	});
+
+	it('shares the cached metadata with the entity set dropdown', async () => {
+		const { context, http } = scenario();
+
+		await getEntitySets.call(context);
+		await getServiceOperations.call(context);
+
+		expect(http.countFor('GET /$metadata')).toBe(1);
 	});
 });

@@ -101,7 +101,7 @@ export function createExecuteFunctions(options: ExecuteFakeOptions): IExecuteFun
 }
 
 /** Builds the `resourceMapper` parameter shape `getMappedValues` reads. */
-export function mapperValue(value: Record<string, string | number | boolean | null>): unknown {
+export function mapperValue(value: Record<string, unknown> | null): unknown {
 	return {
 		mappingMode: 'defineBelow',
 		value,

@@ -17,8 +17,13 @@ import { CUSTOM_API_CALL_BODY_METHODS, executeCustomApiCall } from './helpers/cu
 import { buildEntityKeySegment } from './helpers/entityPath';
 import { getServiceLayerMetadata } from './helpers/metadata';
 import { fetchEntityCollection, serviceLayerApiRequest } from './helpers/request';
-import { getEntitySets } from './methods/loadOptions';
-import { getEntityFields, getEntityKeys } from './methods/resourceMapping';
+import { executeServiceOperation } from './helpers/serviceOperation';
+import { getEntitySets, getServiceOperations } from './methods/loadOptions';
+import {
+	getEntityFields,
+	getEntityKeys,
+	getServiceOperationParameters,
+} from './methods/resourceMapping';
 
 /** Reads a resource mapper parameter's resolved field values. */
 function getMappedValues(
@@ -42,7 +47,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 		group: ['transform'],
 		version: 1,
 		subtitle:
-			'={{$parameter["resource"] === "entitySet" ? $parameter["operation"] + ": " + $parameter["entitySet"] : $parameter["resource"] === "customApiCall" ? $parameter["method"] + " " + $parameter["endpoint"] : $parameter["resource"]}}',
+			'={{$parameter["resource"] === "entitySet" ? $parameter["operation"] + ": " + $parameter["entitySet"] : $parameter["resource"] === "serviceOperation" ? $parameter["serviceOperation"] : $parameter["resource"] === "customApiCall" ? $parameter["method"] + " " + $parameter["endpoint"] : $parameter["resource"]}}',
 		description: 'Interact with the SAP Business One Service Layer',
 		defaults: {
 			name: 'SAP Business One Service Layer',
@@ -212,6 +217,53 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				description: 'Max number of results to return',
 			},
 			{
+				displayName: 'Service Operation Name or ID',
+				name: 'serviceOperation',
+				type: 'options',
+				typeOptions: {
+					loadOptionsMethod: 'getServiceOperations',
+				},
+				required: true,
+				default: '',
+				displayOptions: {
+					show: {
+						resource: ['serviceOperation'],
+					},
+				},
+				description:
+					'Unbound Action or Function to call. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+			},
+			{
+				displayName: 'Parameters',
+				name: 'operationParameters',
+				type: 'resourceMapper',
+				default: {
+					mappingMode: 'defineBelow',
+					value: null,
+				},
+				noDataExpression: true,
+				required: true,
+				typeOptions: {
+					loadOptionsDependsOn: ['serviceOperation'],
+					resourceMapper: {
+						resourceMapperMethod: 'getServiceOperationParameters',
+						mode: 'add',
+						addAllFields: false,
+						supportAutoMap: false,
+						hideNoDataError: true,
+						fieldWords: {
+							singular: 'parameter',
+							plural: 'parameters',
+						},
+					},
+				},
+				displayOptions: {
+					show: {
+						resource: ['serviceOperation'],
+					},
+				},
+			},
+			{
 				displayName: 'Method',
 				name: 'method',
 				type: 'options',
@@ -264,10 +316,12 @@ export class SapBusinessOneServiceLayer implements INodeType {
 	methods = {
 		loadOptions: {
 			getEntitySets,
+			getServiceOperations,
 		},
 		resourceMapping: {
 			getEntityFields,
 			getEntityKeys,
+			getServiceOperationParameters,
 		},
 	};
 
@@ -298,10 +352,23 @@ export class SapBusinessOneServiceLayer implements INodeType {
 					continue;
 				}
 
+				if (resource === 'serviceOperation') {
+					const json = await executeServiceOperation.call(
+						this,
+						{
+							operationName: this.getNodeParameter('serviceOperation', itemIndex) as string,
+							mappedValues: getMappedValues(this, 'operationParameters', itemIndex),
+						},
+						itemIndex,
+					);
+					returnData.push({ json, pairedItem: { item: itemIndex } });
+					continue;
+				}
+
 				if (resource !== 'entitySet') {
 					throw new NodeOperationError(
 						this.getNode(),
-						'This resource has no operations implemented yet',
+						`Unknown resource "${resource}"`,
 						{ itemIndex },
 					);
 				}
