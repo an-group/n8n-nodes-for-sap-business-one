@@ -167,6 +167,47 @@ export async function getServiceOperationParameters(
 		};
 	}
 
+	return toOperationParameterFields(operation);
+}
+
+/**
+ * Populates the bound operation `Parameters` resource-mapper field list from
+ * the selected entity set's Action or Function. The binding parameter (the
+ * entity itself) is never listed; it is addressed through `Key Fields`.
+ */
+export async function getBoundOperationParameters(
+	this: ILoadOptionsFunctions,
+): Promise<ResourceMapperFields> {
+	const entity = await getSelectedEntity.call(this);
+
+	if (entity === undefined) {
+		return { fields: [] };
+	}
+
+	const operationName = this.getNodeParameter('boundOperation') as string;
+
+	if (!operationName) {
+		return { fields: [] };
+	}
+
+	const operation = [...entity.boundActions, ...entity.boundFunctions].find(
+		(candidate) => candidate.name === operationName,
+	);
+
+	if (operation === undefined) {
+		return {
+			fields: [],
+			emptyFieldsNotice: `Unknown action or function "${operationName}" for entity set "${entity.entitySetName}".`,
+		};
+	}
+
+	return toOperationParameterFields(operation);
+}
+
+function toOperationParameterFields(operation: {
+	name: string;
+	parameters: OperationParameter[];
+}): ResourceMapperFields {
 	if (operation.parameters.length === 0) {
 		return {
 			fields: [],

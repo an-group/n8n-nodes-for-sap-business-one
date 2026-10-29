@@ -4,11 +4,13 @@ import { describe, expect, it } from 'vitest';
 
 import { getEntitySets } from '../nodes/SapBusinessOneServiceLayer/methods/loadOptions';
 import {
+	getBoundOperationParameters,
 	getEntityFields,
 	getEntityKeys,
 	getServiceOperationParameters,
 } from '../nodes/SapBusinessOneServiceLayer/methods/resourceMapping';
 import {
+	EDMX_BOUND_OPERATIONS,
 	EDMX_BROKEN_ENTITY_SET,
 	EDMX_FIELD_TYPES,
 	EDMX_SERVICE_OPERATIONS,
@@ -331,5 +333,62 @@ describe('getServiceOperationParameters', () => {
 
 		await expect(getServiceOperationParameters.call(context)).resolves.toEqual({ fields: [] });
 		expect(http.calls).toHaveLength(0);
+	});
+});
+
+async function boundParametersFor(entitySet: string | undefined, boundOperation?: string) {
+	const { context, http } = scenario({
+		parameters: { entitySet, boundOperation },
+		metadataXml: EDMX_BOUND_OPERATIONS,
+	});
+
+	return { result: await getBoundOperationParameters.call(context), http };
+}
+
+describe('getBoundOperationParameters', () => {
+	it('maps every parameter except the binding one, in declaration order', async () => {
+		const { result } = await boundParametersFor('Orders', 'GetStatus');
+
+		expect(result).toEqual({
+			fields: [
+				bodyField('Depth', 'number'),
+				bodyField('Label', 'string'),
+				bodyField('Filter', 'object'),
+			],
+		});
+	});
+
+	it("maps List's ParamList to a string field", async () => {
+		const { result } = await boundParametersFor('SQLQueries', 'List');
+
+		expect(result).toEqual({ fields: [bodyField('ParamList', 'string')] });
+	});
+
+	it('explains itself when the operation takes no parameters', async () => {
+		const { result } = await boundParametersFor('StockTransfers', 'Close');
+
+		expect(result).toEqual({ fields: [], emptyFieldsNotice: '"Close" takes no parameters.' });
+	});
+
+	it('explains itself when the operation is not bound to the entity set', async () => {
+		const { result } = await boundParametersFor('StockTransfers', 'Reopen');
+
+		expect(result).toEqual({
+			fields: [],
+			emptyFieldsNotice: 'Unknown action or function "Reopen" for entity set "StockTransfers".',
+		});
+	});
+
+	it('stays empty, and fetches nothing, while no entity set is selected', async () => {
+		const { result, http } = await boundParametersFor('', 'Close');
+
+		expect(result).toEqual({ fields: [] });
+		expect(http.calls).toHaveLength(0);
+	});
+
+	it('stays empty while no operation is selected', async () => {
+		const { result } = await boundParametersFor('Orders', '');
+
+		expect(result).toEqual({ fields: [] });
 	});
 });

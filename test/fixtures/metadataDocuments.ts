@@ -248,3 +248,99 @@ export const EDMX_SERVICE_OPERATIONS = `<?xml version="1.0" encoding="UTF-8"?>
   </edmx:DataServices>
 </edmx:Edmx>
 `;
+
+/**
+ * Bound Actions and Functions, modelled on the real Service Layer's: `Close`
+ * is declared for two entity types (the real schema has it on 11), every
+ * shape of binding is present — simple key, composite key, string key — and
+ * `List` reproduces `SQLQueries`' single `ParamList` string. `Reopen` and
+ * `GetStatus` are synthetic: no real bound operation takes a simple parameter
+ * besides `List`, but the request construction must still handle one.
+ * `Warehouses` binds nothing. Kept separate so the parser tests pinned to
+ * `SYNTHETIC_EDMX_V4` stay untouched.
+ */
+export const EDMX_BOUND_OPERATIONS = `<?xml version="1.0" encoding="UTF-8"?>
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
+  <edmx:DataServices>
+    <Schema Namespace="SAPB1" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+
+      <EntityType Name="Document" OpenType="true">
+        <Key>
+          <PropertyRef Name="DocEntry"/>
+        </Key>
+        <Property Name="DocEntry" Nullable="false" Type="Edm.Int32"/>
+      </EntityType>
+
+      <EntityType Name="StockTransfer" OpenType="true">
+        <Key>
+          <PropertyRef Name="DocEntry"/>
+        </Key>
+        <Property Name="DocEntry" Nullable="false" Type="Edm.Int32"/>
+      </EntityType>
+
+      <EntityType Name="SalesTaxAuthority" OpenType="true">
+        <Key>
+          <PropertyRef Name="Type"/>
+          <PropertyRef Name="Code"/>
+        </Key>
+        <Property Name="Type" Nullable="false" Type="Edm.Int32"/>
+        <Property Name="Code" Nullable="false" Type="Edm.String"/>
+      </EntityType>
+
+      <EntityType Name="SQLQuery" OpenType="true">
+        <Key>
+          <PropertyRef Name="SqlCode"/>
+        </Key>
+        <Property Name="SqlCode" Nullable="false" Type="Edm.String"/>
+      </EntityType>
+
+      <EntityType Name="Warehouse" OpenType="true">
+        <Key>
+          <PropertyRef Name="WarehouseCode"/>
+        </Key>
+        <Property Name="WarehouseCode" Nullable="false" Type="Edm.String"/>
+      </EntityType>
+
+      <Action IsBound="true" Name="Close">
+        <Parameter Name="DocumentParams" Type="SAPB1.Document"/>
+      </Action>
+      <Action IsBound="true" Name="Cancel">
+        <Parameter Name="DocumentParams" Type="SAPB1.Document"/>
+      </Action>
+      <Action IsBound="true" Name="Reopen">
+        <Parameter Name="DocumentParams" Type="SAPB1.Document"/>
+        <Parameter Name="Reason" Type="Edm.String"/>
+        <Parameter Name="Options" Type="SAPB1.ReopenOptions"/>
+      </Action>
+      <Function IsBound="true" Name="GetStatus">
+        <Parameter Name="DocumentParams" Type="SAPB1.Document"/>
+        <Parameter Name="Depth" Type="Edm.Int32"/>
+        <Parameter Name="Label" Type="Edm.String"/>
+        <Parameter Name="Filter" Type="SAPB1.StatusFilter"/>
+        <ReturnType Type="Edm.String"/>
+      </Function>
+      <Action IsBound="true" Name="Close">
+        <Parameter Name="StockTransferParams" Type="SAPB1.StockTransfer"/>
+      </Action>
+      <Function IsBound="true" Name="Recalculate">
+        <Parameter Name="SalesTaxAuthorityParams" Type="SAPB1.SalesTaxAuthority"/>
+        <ReturnType Type="SAPB1.SalesTaxAuthority"/>
+      </Function>
+      <Function IsBound="true" Name="List">
+        <Parameter Name="SQLQueryParams" Type="SAPB1.SQLQuery"/>
+        <Parameter Name="ParamList" Type="Edm.String"/>
+        <ReturnType Type="SAPB1.SQLQueryResult"/>
+      </Function>
+
+      <EntityContainer Name="SAPB1">
+        <EntitySet EntityType="SAPB1.Document" Name="Orders"/>
+        <EntitySet EntityType="SAPB1.StockTransfer" Name="StockTransfers"/>
+        <EntitySet EntityType="SAPB1.SalesTaxAuthority" Name="SalesTaxAuthorities"/>
+        <EntitySet EntityType="SAPB1.SQLQuery" Name="SQLQueries"/>
+        <EntitySet EntityType="SAPB1.Warehouse" Name="Warehouses"/>
+      </EntityContainer>
+
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>
+`;

@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest';
 
 import { SERVICE_LAYER_CREDENTIAL_NAME } from '../nodes/SapBusinessOneServiceLayer/helpers/credentials';
 import {
+	getBoundOperations,
 	getEntitySets,
 	getServiceOperations,
 } from '../nodes/SapBusinessOneServiceLayer/methods/loadOptions';
 import {
+	EDMX_BOUND_OPERATIONS,
 	EDMX_EMPTY,
 	EDMX_SERVICE_OPERATIONS,
 	EDMX_V1,
@@ -30,6 +32,7 @@ const LOGIN_REJECTED: FakeResponse = {
 interface ScenarioOptions {
 	metadataXml?: string;
 	routes?: RouteTable;
+	parameters?: Record<string, unknown>;
 }
 
 function scenario(options: ScenarioOptions = {}) {
@@ -42,6 +45,7 @@ function scenario(options: ScenarioOptions = {}) {
 	const { context, credentialCalls } = createLoadOptionsFunctions({
 		http,
 		credentials,
+		parameters: options.parameters,
 		node: createTestNode(credentialId),
 	});
 
@@ -173,5 +177,58 @@ describe('getServiceOperations', () => {
 		await getServiceOperations.call(context);
 
 		expect(http.countFor('GET /$metadata')).toBe(1);
+	});
+});
+
+async function boundOperationsFor(entitySet: string | undefined) {
+	const { context, http } = scenario({
+		metadataXml: EDMX_BOUND_OPERATIONS,
+		parameters: { entitySet },
+	});
+
+	return { options: await getBoundOperations.call(context), http };
+}
+
+describe('getBoundOperations', () => {
+	it("lists the entity set's own actions and functions sorted by name, with the kind in the label", async () => {
+		const { options } = await boundOperationsFor('Orders');
+
+		expect(options).toEqual([
+			{ name: 'Cancel (Action)', value: 'Cancel' },
+			{ name: 'Close (Action)', value: 'Close' },
+			{ name: 'GetStatus (Function)', value: 'GetStatus' },
+			{ name: 'Reopen (Action)', value: 'Reopen' },
+		]);
+	});
+
+	it('resolves a shared operation name to the selected entity type only', async () => {
+		const { options } = await boundOperationsFor('StockTransfers');
+
+		expect(options).toEqual([{ name: 'Close (Action)', value: 'Close' }]);
+	});
+
+	it('lists a bound function with a parameter', async () => {
+		const { options } = await boundOperationsFor('SQLQueries');
+
+		expect(options).toEqual([{ name: 'List (Function)', value: 'List' }]);
+	});
+
+	it('returns an empty list for an entity set that binds nothing', async () => {
+		const { options } = await boundOperationsFor('Warehouses');
+
+		expect(options).toEqual([]);
+	});
+
+	it('returns an empty list for an entity set the metadata does not describe', async () => {
+		const { options } = await boundOperationsFor('NoSuchSet');
+
+		expect(options).toEqual([]);
+	});
+
+	it('stays empty, and fetches nothing, while no entity set is selected', async () => {
+		const { options, http } = await boundOperationsFor('');
+
+		expect(options).toEqual([]);
+		expect(http.calls).toHaveLength(0);
 	});
 });

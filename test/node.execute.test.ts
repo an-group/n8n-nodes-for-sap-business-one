@@ -3,7 +3,11 @@ import type { INodeExecutionData } from 'n8n-workflow';
 import { describe, expect, it } from 'vitest';
 
 import { SapBusinessOneServiceLayer } from '../nodes/SapBusinessOneServiceLayer/SapBusinessOneServiceLayer.node';
-import { EDMX_SERVICE_OPERATIONS, SYNTHETIC_EDMX_V4 } from './fixtures/metadataDocuments';
+import {
+	EDMX_BOUND_OPERATIONS,
+	EDMX_SERVICE_OPERATIONS,
+	SYNTHETIC_EDMX_V4,
+} from './fixtures/metadataDocuments';
 import { createTestCredentials } from './helpers/credentials';
 import { flattenErrorText } from './helpers/errors';
 import { createHttpFake, type FakeResponse, type RouteTable } from './helpers/http';
@@ -744,5 +748,257 @@ describe('Service Operation', () => {
 		expect(output[0]).toHaveLength(1);
 		expect(output[0][0].pairedItem).toEqual({ item: 0 });
 		expect(String(output[0][0].json.error)).toContain('is not valid JSON');
+	});
+});
+
+const BOUND_OPERATION_METADATA: RouteTable = {
+	'GET /$metadata': { statusCode: 200, body: EDMX_BOUND_OPERATIONS },
+};
+
+function boundOperationParams(
+	entitySet: string,
+	boundOperation: string,
+	keyValues: Record<string, unknown> | null,
+	values: Record<string, unknown> | null = null,
+): Record<string, ParameterValue> {
+	return entitySetParams(
+		'executeOperation',
+		{
+			boundOperation,
+			keyFields: mapperValue(keyValues),
+			boundOperationParameters: mapperValue(values),
+		},
+		entitySet,
+	);
+}
+
+describe('Entity Set: Execute Action or Function', () => {
+	it('posts a bound action without parameters without a body and reports a 204 as success', async () => {
+		const test = harness({
+			routes: {
+				...BOUND_OPERATION_METADATA,
+				'POST /Orders(45)/Close': { statusCode: 204, body: '' },
+			},
+			parameters: boundOperationParams('Orders', 'Close', { DocEntry: 45 }),
+		});
+
+		const output = await test.run();
+
+		expect(test.http.callsFor('POST /Orders(45)/Close')[0].body).toBeUndefined();
+		expect(output).toEqual([
+			[{ json: { success: true, statusCode: 204 }, pairedItem: { item: 0 } }],
+		]);
+	});
+
+	it('resolves a shared operation name through the selected entity set', async () => {
+		const test = harness({
+			routes: {
+				...BOUND_OPERATION_METADATA,
+				'POST /StockTransfers(7)/Close': { statusCode: 204, body: '' },
+			},
+			parameters: boundOperationParams('StockTransfers', 'Close', { DocEntry: 7 }),
+		});
+
+		await test.run();
+
+		expect(test.http.countFor('POST /StockTransfers(7)/Close')).toBe(1);
+	});
+
+	it('posts bound action parameters as a JSON body, parsing complex ones', async () => {
+		const test = harness({
+			routes: {
+				...BOUND_OPERATION_METADATA,
+				'POST /Orders(45)/Reopen': { statusCode: 204, body: '' },
+			},
+			parameters: boundOperationParams(
+				'Orders',
+				'Reopen',
+				{ DocEntry: 45 },
+				{ Reason: 'Customer request', Options: '{"KeepLines":"tYES"}', Stale: 'x' },
+			),
+		});
+
+		await test.run();
+
+		expect(test.http.callsFor('POST /Orders(45)/Reopen')[0].body).toEqual({
+			Reason: 'Customer request',
+			Options: { KeepLines: 'tYES' },
+		});
+	});
+
+	it('encodes a composite key into the bound operation path', async () => {
+		const path = "GET /SalesTaxAuthorities(Type=-3,Code='A%26K')/Recalculate";
+		const test = harness({
+			routes: { ...BOUND_OPERATION_METADATA, [path]: { statusCode: 200, body: { Rate: 7 } } },
+			parameters: boundOperationParams('SalesTaxAuthorities', 'Recalculate', {
+				Type: -3,
+				Code: 'A&K',
+			}),
+		});
+
+		const output = await test.run();
+
+		expect(test.http.countFor(path)).toBe(1);
+		expect(output[0][0].json).toEqual({ Rate: 7 });
+	});
+
+	it('calls a bound function without parameters without parentheses', async () => {
+		const path = "GET /SQLQueries('Q1')/List";
+		const test = harness({
+			routes: {
+				...BOUND_OPERATION_METADATA,
+				[path]: { statusCode: 200, body: { value: [{ CardCode: 'C1' }] } },
+			},
+			parameters: boundOperationParams('SQLQueries', 'List', { SqlCode: 'Q1' }),
+		});
+
+		const output = await test.run();
+
+		expect(test.http.countFor(path)).toBe(1);
+		expect(output[0][0].json).toEqual({ value: [{ CardCode: 'C1' }] });
+	});
+
+	it('sends bound function parameters as OData literal query options, in metadata order', async () => {
+		const path = "GET /Orders(45)/GetStatus?Depth=2&Label='O''Brien%20%231'";
+		const test = harness({
+			routes: { ...BOUND_OPERATION_METADATA, [path]: { statusCode: 200, body: 'Open' } },
+			parameters: boundOperationParams(
+				'Orders',
+				'GetStatus',
+				{ DocEntry: 45 },
+				{ Label: "O'Brien #1", Depth: 2 },
+			),
+		});
+
+		const output = await test.run();
+
+		expect(test.http.countFor(path)).toBe(1);
+		// A plain-text response is wrapped, exactly as a Custom API Call does.
+		expect(output[0][0].json).toEqual({ data: 'Open' });
+	});
+
+	it('rejects a complex bound function parameter instead of sending it in the URL', async () => {
+		const test = harness({
+			routes: BOUND_OPERATION_METADATA,
+			parameters: boundOperationParams(
+				'Orders',
+				'GetStatus',
+				{ DocEntry: 45 },
+				{ Filter: '{"Open":true}' },
+			),
+		});
+
+		const error = await test.run().catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(NodeOperationError);
+		expect(flattenErrorText(error)).toContain('cannot be sent in the URL');
+		expect(test.http.calls.filter((call) => call.url?.startsWith('/Orders'))).toEqual([]);
+	});
+
+	it("sends List's ParamList as the stored query's own query options", async () => {
+		const path = "GET /SQLQueries('Q1')/List?code='O''Brien%20%231'&minTotal=100";
+		const test = harness({
+			routes: { ...BOUND_OPERATION_METADATA, [path]: { statusCode: 200, body: { value: [] } } },
+			parameters: boundOperationParams(
+				'SQLQueries',
+				'List',
+				{ SqlCode: 'Q1' },
+				{ ParamList: " code='O''Brien #1' & minTotal = 100 &" },
+			),
+		});
+
+		await test.run();
+
+		expect(test.http.countFor(path)).toBe(1);
+	});
+
+	it.each([
+		['an entry without a value', "code='C1'&minTotal"],
+		['a system query option', '$top=1'],
+	])('rejects a ParamList with %s before sending the request', async (_case, paramList) => {
+		const test = harness({
+			routes: BOUND_OPERATION_METADATA,
+			parameters: boundOperationParams(
+				'SQLQueries',
+				'List',
+				{ SqlCode: 'Q1' },
+				{ ParamList: paramList },
+			),
+		});
+
+		const error = await test.run().catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(NodeOperationError);
+		expect(flattenErrorText(error)).toContain('is not in the form name=value');
+		expect(test.http.calls.filter((call) => call.url?.startsWith('/SQLQueries'))).toEqual([]);
+	});
+
+	it('reports a missing key field instead of sending a request', async () => {
+		const test = harness({
+			routes: BOUND_OPERATION_METADATA,
+			parameters: boundOperationParams('Orders', 'Close', null),
+		});
+
+		const error = await test.run().catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(NodeOperationError);
+		expect(flattenErrorText(error)).toContain('Key field DocEntry has no value');
+		expect(test.http.calls.filter((call) => call.url?.startsWith('/Orders'))).toEqual([]);
+	});
+
+	it('rejects an operation not bound to the selected entity set', async () => {
+		const test = harness({
+			routes: BOUND_OPERATION_METADATA,
+			parameters: boundOperationParams('StockTransfers', 'Reopen', { DocEntry: 7 }),
+		});
+
+		const error = await test.run().catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(NodeOperationError);
+		expect(flattenErrorText(error)).toContain(
+			'Unknown action or function "Reopen" for entity set "StockTransfers"',
+		);
+	});
+
+	it('surfaces a Service Layer error as a node API error', async () => {
+		const test = harness({
+			routes: {
+				...BOUND_OPERATION_METADATA,
+				'POST /Orders(45)/Close': {
+					statusCode: 400,
+					body: { error: { code: -5002, message: { value: 'Document is already closed' } } },
+				},
+			},
+			parameters: boundOperationParams('Orders', 'Close', { DocEntry: 45 }),
+		});
+
+		const error = await test.run().catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(NodeApiError);
+		expect(flattenErrorText(error)).toContain('Document is already closed');
+	});
+
+	it('collects the error on the item when continueOnFail is set and carries on', async () => {
+		const test = harness({
+			routes: {
+				...BOUND_OPERATION_METADATA,
+				'POST /Orders(46)/Cancel': { statusCode: 204, body: '' },
+			},
+			parameters: {
+				...boundOperationParams('Orders', 'Cancel', null),
+				keyFields: (itemIndex: number) => mapperValue(itemIndex === 0 ? {} : { DocEntry: 46 }),
+			},
+			items: [{ json: {} }, { json: {} }],
+			continueOnFail: true,
+		});
+
+		const output = await test.run();
+
+		expect(output).toEqual([
+			[
+				{ json: { error: 'Key field DocEntry has no value' }, pairedItem: { item: 0 } },
+				{ json: { success: true, statusCode: 204 }, pairedItem: { item: 1 } },
+			],
+		]);
 	});
 });

@@ -127,7 +127,7 @@ Tests live in `test/` rather than beside the source, so they are never compiled 
 
 Coverage output is intentionally limited to a terminal text summary plus `coverage/lcov.info` (no HTML report): `n8n-node build` copies every `**/*.{png,svg}` outside `dist/` and `node_modules/` into the build output, and the HTML reporter emits PNG assets that would then be published.
 
-Covered today: OData literal encoding, simple and composite entity keys, metadata parsing, session reuse and invalidation, concurrent login de-duplication, expired-session retry, Entity Set CRUD request construction, Service Operation discovery, parameter handling, and request construction, and Custom API Call endpoint validation, body parsing, and request construction. Live Service Layer integration tests and end-to-end n8n workflow tests are out of scope; verification against a real instance remains manual.
+Covered today: OData literal encoding, simple and composite entity keys, metadata parsing, session reuse and invalidation, concurrent login de-duplication, expired-session retry, Entity Set CRUD request construction, Service Operation and bound Action/Function discovery, parameter handling, and request construction, and Custom API Call endpoint validation, body parsing, and request construction. Live Service Layer integration tests and end-to-end n8n workflow tests are out of scope; verification against a real instance remains manual.
 
 ### Writing tests
 
@@ -151,6 +151,7 @@ The node exposes a **Resource** selector with three values: **Entity Set**, **Se
 - **Create** — create an entity
 - **Update** — update an entity by its key
 - **Delete** — delete an entity by its key
+- **Execute Action or Function** — call an Action or Function bound to one entity, for example closing an order (`Orders(45)/Close`)
 
 **Custom API Call** sends a request to any Service Layer endpoint you enter yourself, reusing the credential and session handling described below. See [Custom API Call](#custom-api-call).
 
@@ -158,7 +159,6 @@ The node exposes a **Resource** selector with three values: **Entity Set**, **Se
 
 The following are planned for later releases:
 
-- Guided bound Service Layer actions and functions (e.g. `Orders(1)/Close`); until then they can be called through **Custom API Call**
 - `$select`, `$filter`, `$orderby`, and `$expand` query options for Get/Get Many
 - Structured SAP Business One error handling
 - Webhook and event integration
@@ -167,9 +167,22 @@ These are planned and not yet available in the current development version.
 
 ### Entity Set operations
 
-- **Key Fields** (Get, Update, Delete) — identifies the entity, one input per key property, populated from the connected instance's metadata and labelled with the property's own name (for example a single `ItemCode` field for `Items`, or `ItemCode`/`CardCode`/`Substitute` for the three-part composite key of `AlternateCatNum`) — no need to know or type a key's name from memory. Every key field is required; leaving one unset is rejected before any request is sent.
+- **Key Fields** (Get, Update, Delete, Execute Action or Function) — identifies the entity, one input per key property, populated from the connected instance's metadata and labelled with the property's own name (for example a single `ItemCode` field for `Items`, or `ItemCode`/`CardCode`/`Substitute` for the three-part composite key of `AlternateCatNum`) — no need to know or type a key's name from memory. Every key field is required; leaving one unset is rejected before any request is sent.
 - **Fields** (Create, Update) — a metadata-driven field mapper: pick which of the entity type's properties to send, sourced from the connected instance's metadata. Collection/navigation properties (for example `Orders.DocumentLines`) are not offered here and cannot be set through Create/Update yet — entities whose meaningful data lives in a line-item collection can only have their header fields set. For Create, the entity's key properties are also offered, since some entity sets require a user-supplied key (`CardCode`) while others assign one automatically (`DocEntry`); for Update, key properties are omitted, since the key is already given via **Key Fields** and the Service Layer does not support changing it through an update.
 - **Get Many** pagination — the Service Layer defaults to 20 rows per page regardless of how many match. `Get Many` requests the page size it actually needs (`Limit`, or unlimited for `Return All`) via the `Prefer: odata.maxpagesize` request header, which normally returns everything in a single request; the server's own pagination (`@odata.nextLink`) is still followed as a fallback if a very large result is nonetheless split across pages.
+
+#### Execute Action or Function
+
+Calls an Action or Function bound to one entity of the selected entity set, identified through **Key Fields** (simple and composite keys).
+
+- **Action or Function** — a metadata-driven list of the operations bound to the selected entity set's entity type, with the kind in the label, for example `Close (Action)` or `List (Function)`. Names such as `Close` exist for many entity types; the list only offers the selected one's own.
+- **Parameters** — the operation's parameters, handled exactly as for [Service Operation](#service-operation). Almost every bound operation takes none; the mapper then says so.
+
+Actions are sent as `POST /<EntitySet>(<key>)/<Action>`, with the parameters as a JSON body or no body when there are none. Functions are sent as `GET /<EntitySet>(<key>)/<Function>` without parentheses, with their parameters as query options written as OData literals (`?Name=value`): the Service Layer rejects bound function calls with parentheses.
+
+`SQLQueries` `List` is the exception: its declared `ParamList` parameter is not accepted by the Service Layer under that name. Enter the stored query's own parameters there instead, as `name=value` pairs separated by `&`, with string values in single quotes and quotes inside them doubled — for example `code='C20000'&minTotal=100` for a query declaring `:code` and `:minTotal`. Each pair is sent as a query option of its own. A value containing `&` cannot be expressed this way; use **Custom API Call** for that query.
+
+The output follows the Custom API Call convention.
 
 ### Service Operation
 

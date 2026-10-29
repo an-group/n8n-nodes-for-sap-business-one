@@ -17,9 +17,10 @@ import { CUSTOM_API_CALL_BODY_METHODS, executeCustomApiCall } from './helpers/cu
 import { buildEntityKeySegment } from './helpers/entityPath';
 import { getServiceLayerMetadata } from './helpers/metadata';
 import { fetchEntityCollection, serviceLayerApiRequest } from './helpers/request';
-import { executeServiceOperation } from './helpers/serviceOperation';
-import { getEntitySets, getServiceOperations } from './methods/loadOptions';
+import { executeBoundOperation, executeServiceOperation } from './helpers/serviceOperation';
+import { getBoundOperations, getEntitySets, getServiceOperations } from './methods/loadOptions';
 import {
+	getBoundOperationParameters,
 	getEntityFields,
 	getEntityKeys,
 	getServiceOperationParameters,
@@ -47,7 +48,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 		group: ['transform'],
 		version: 1,
 		subtitle:
-			'={{$parameter["resource"] === "entitySet" ? $parameter["operation"] + ": " + $parameter["entitySet"] : $parameter["resource"] === "serviceOperation" ? $parameter["serviceOperation"] : $parameter["resource"] === "customApiCall" ? $parameter["method"] + " " + $parameter["endpoint"] : $parameter["resource"]}}',
+			'={{$parameter["resource"] === "entitySet" ? ($parameter["operation"] === "executeOperation" ? $parameter["boundOperation"] : $parameter["operation"]) + ": " + $parameter["entitySet"] : $parameter["resource"] === "serviceOperation" ? $parameter["serviceOperation"] : $parameter["resource"] === "customApiCall" ? $parameter["method"] + " " + $parameter["endpoint"] : $parameter["resource"]}}',
 		description: 'Interact with the SAP Business One Service Layer',
 		defaults: {
 			name: 'SAP Business One Service Layer',
@@ -117,11 +118,31 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				options: [
 					{ name: 'Create', value: 'create', description: 'Create an entity', action: 'Create an entity' },
 					{ name: 'Delete', value: 'delete', description: 'Delete an entity', action: 'Delete an entity' },
+					{ name: 'Execute Action or Function', value: 'executeOperation', description: 'Call an action or function bound to an entity, such as closing an order', action: 'Execute an action or function on an entity' },
 					{ name: 'Get', value: 'get', description: 'Get a single entity by its key', action: 'Get an entity' },
 					{ name: 'Get Many', value: 'getMany', description: 'Get many entities', action: 'Get many entities' },
 					{ name: 'Update', value: 'update', description: 'Update an entity', action: 'Update an entity' },
 				],
 				default: 'get',
+			},
+			{
+				displayName: 'Action or Function Name or ID',
+				name: 'boundOperation',
+				type: 'options',
+				typeOptions: {
+					loadOptionsMethod: 'getBoundOperations',
+					loadOptionsDependsOn: ['entitySet'],
+				},
+				required: true,
+				default: '',
+				displayOptions: {
+					show: {
+						resource: ['entitySet'],
+						operation: ['executeOperation'],
+					},
+				},
+				description:
+					'Action or Function bound to the selected entity set. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 			},
 			{
 				displayName: 'Key Fields',
@@ -150,7 +171,38 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				displayOptions: {
 					show: {
 						resource: ['entitySet'],
-						operation: ['get', 'update', 'delete'],
+						operation: ['get', 'update', 'delete', 'executeOperation'],
+					},
+				},
+			},
+			{
+				displayName: 'Parameters',
+				name: 'boundOperationParameters',
+				type: 'resourceMapper',
+				default: {
+					mappingMode: 'defineBelow',
+					value: null,
+				},
+				noDataExpression: true,
+				required: true,
+				typeOptions: {
+					loadOptionsDependsOn: ['entitySet', 'boundOperation'],
+					resourceMapper: {
+						resourceMapperMethod: 'getBoundOperationParameters',
+						mode: 'add',
+						addAllFields: false,
+						supportAutoMap: false,
+						hideNoDataError: true,
+						fieldWords: {
+							singular: 'parameter',
+							plural: 'parameters',
+						},
+					},
+				},
+				displayOptions: {
+					show: {
+						resource: ['entitySet'],
+						operation: ['executeOperation'],
 					},
 				},
 			},
@@ -315,10 +367,12 @@ export class SapBusinessOneServiceLayer implements INodeType {
 
 	methods = {
 		loadOptions: {
+			getBoundOperations,
 			getEntitySets,
 			getServiceOperations,
 		},
 		resourceMapping: {
+			getBoundOperationParameters,
 			getEntityFields,
 			getEntityKeys,
 			getServiceOperationParameters,
@@ -486,6 +540,16 @@ export class SapBusinessOneServiceLayer implements INodeType {
 						json: { success: true, entitySet: entitySetName, key: keyValues },
 						pairedItem: { item: itemIndex },
 					});
+					continue;
+				}
+
+				if (operation === 'executeOperation') {
+					const json = await executeBoundOperation.call(this, credentials, credentialId, entity, {
+						operationName: this.getNodeParameter('boundOperation', itemIndex) as string,
+						keyValues: getMappedValues(this, 'keyFields', itemIndex),
+						mappedValues: getMappedValues(this, 'boundOperationParameters', itemIndex),
+					});
+					returnData.push({ json, pairedItem: { item: itemIndex } });
 					continue;
 				}
 
