@@ -175,7 +175,7 @@ These are planned and not yet available in the current development version.
   - lines missing from the array stay unchanged, and an empty array (`[]`) changes nothing — lines cannot be removed through Update
   - a single complex property (`AddressExtension`) is merged field by field: sub-fields not sent keep their value
 
-  Replacing a collection needs the `B1S-ReplaceCollectionsOnPatch` request header, which this node cannot send yet.
+  To replace collections instead, turn on **Options → Replace Collections**. Update then sends the `B1S-ReplaceCollectionsOnPatch: true` request header, and the lines sent replace the existing ones — observed live both with and without other properties in the same update.
 - **Get Many** pagination — the Service Layer defaults to 20 rows per page regardless of how many match. `Get Many` requests the page size it actually needs (`Limit`, or unlimited for `Return All`) via the `Prefer: odata.maxpagesize` request header, which normally returns everything in a single request; the server's own pagination (`@odata.nextLink`) is still followed as a fallback if a very large result is nonetheless split across pages.
 
 #### Execute Action or Function
@@ -228,6 +228,7 @@ An escape hatch for Service Layer endpoints the guided operations do not cover y
   - `..` path segments, including percent-encoded ones, so the call cannot leave the Service Layer API path
   - the `Login` and `Logout` endpoints, because the node manages the session itself — a custom login would put a session ID in the output, and a custom logout would end the session shared by every execution using the credential
 - **JSON Body** (`POST`, `PATCH`, `PUT` only) — optional. Leave it empty to send no body. It must be a JSON object or array; invalid JSON fails with a clear error before any request is sent. An expression that resolves to an object is used as-is.
+- **Options → Headers** — optional additional HTTP headers as name/value pairs, for example `B1S-ReplaceCollectionsOnPatch: true` for a `PATCH` that replaces a collection. Rows without a name are skipped. The `Cookie` header carries the node's session and cannot be set; an invalid header name, a name given twice (in any letter case), or a value with a line break fails with a clear error before any request is sent.
 
 Each input item produces one output item:
 

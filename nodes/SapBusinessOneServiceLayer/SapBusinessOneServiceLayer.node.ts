@@ -239,6 +239,29 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				},
 			},
 			{
+				displayName: 'Options',
+				name: 'options',
+				type: 'collection',
+				placeholder: 'Add option',
+				default: {},
+				displayOptions: {
+					show: {
+						resource: ['entitySet'],
+						operation: ['update'],
+					},
+				},
+				options: [
+					{
+						displayName: 'Replace Collections',
+						name: 'replaceCollections',
+						type: 'boolean',
+						default: false,
+						description:
+							'Whether to replace collection properties such as DocumentLines instead of merging them into the existing lines. Sends the B1S-ReplaceCollectionsOnPatch header.',
+					},
+				],
+			},
+			{
 				displayName: 'Return All',
 				name: 'returnAll',
 				type: 'boolean',
@@ -363,6 +386,52 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				},
 				description: 'Optional JSON request body. Leave empty to send no body.',
 			},
+			{
+				displayName: 'Options',
+				name: 'options',
+				type: 'collection',
+				placeholder: 'Add option',
+				default: {},
+				displayOptions: {
+					show: {
+						resource: ['customApiCall'],
+					},
+				},
+				options: [
+					{
+						displayName: 'Headers',
+						name: 'headers',
+						type: 'fixedCollection',
+						placeholder: 'Add header',
+						default: {},
+						typeOptions: {
+							multipleValues: true,
+						},
+						description:
+							'Additional HTTP headers to send, for example B1S-ReplaceCollectionsOnPatch. The session cookie is managed by the node and cannot be set.',
+						options: [
+							{
+								displayName: 'Header',
+								name: 'header',
+								values: [
+									{
+										displayName: 'Name',
+										name: 'name',
+										type: 'string',
+										default: '',
+									},
+									{
+										displayName: 'Value',
+										name: 'value',
+										type: 'string',
+										default: '',
+									},
+								],
+							},
+						],
+					},
+				],
+			},
 		],
 	};
 
@@ -400,6 +469,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 							jsonBody: (CUSTOM_API_CALL_BODY_METHODS as readonly string[]).includes(method)
 								? this.getNodeParameter('jsonBody', itemIndex, '')
 								: undefined,
+							headers: (this.getNodeParameter('options', itemIndex, {}) as IDataObject).headers,
 						},
 						itemIndex,
 					);
@@ -512,6 +582,8 @@ export class SapBusinessOneServiceLayer implements INodeType {
 						getMappedValues(this, 'entityFields', itemIndex),
 					);
 
+					const options = this.getNodeParameter('options', itemIndex, {}) as IDataObject;
+
 					// The Service Layer returns 204 No Content on a successful PATCH. Default
 					// JSON parsing is kept (not json: false): an empty body parses to '' without
 					// throwing, and json: false would also skip parsing a failed PATCH's error
@@ -521,6 +593,11 @@ export class SapBusinessOneServiceLayer implements INodeType {
 						url: `/${keySegment}`,
 						method: 'PATCH',
 						body: fieldValues,
+						// Without it the Service Layer merges collections into the existing
+						// lines (see README, "Update and collections").
+						...(options.replaceCollections === true
+							? { headers: { 'B1S-ReplaceCollectionsOnPatch': 'true' } }
+							: {}),
 					});
 
 					returnData.push({
