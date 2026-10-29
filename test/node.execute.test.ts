@@ -62,7 +62,7 @@ function entitySetParams(
 	extra: Record<string, ParameterValue> = {},
 	entitySet = 'Orders',
 ): Record<string, ParameterValue> {
-	return { resource: 'entitySet', operation, entitySet, ...extra };
+	return { resource: 'entitySet', operation, entitySet, options: {}, ...extra };
 }
 
 describe('Entity Set operations', () => {
@@ -433,6 +433,134 @@ describe('Entity Set: complex and collection fields', () => {
 	});
 });
 
+describe('Entity Set: Replace Collections', () => {
+	function updateParams(options: Record<string, unknown>) {
+		return entitySetParams('update', {
+			keyFields: mapperValue({ DocEntry: 45 }),
+			entityFields: mapperValue({ CardCode: 'C2' }),
+			options,
+		});
+	}
+
+	it('sends the replace header when the option is on', async () => {
+		const test = harness({
+			routes: { 'PATCH /Orders(45)': { statusCode: 204, body: '' } },
+			parameters: updateParams({ replaceCollections: true }),
+		});
+
+		await test.run();
+
+		const [request] = test.http.callsFor('PATCH /Orders(45)');
+		expect(request.headers?.['B1S-ReplaceCollectionsOnPatch']).toBe('true');
+		expect(request.headers?.Cookie).toBe('B1SESSION=sess-1');
+	});
+
+	it.each([{}, { replaceCollections: false }])(
+		'sends no extra header when the option is %o',
+		async (options) => {
+			const test = harness({
+				routes: { 'PATCH /Orders(45)': { statusCode: 204, body: '' } },
+				parameters: updateParams(options),
+			});
+
+			await test.run();
+
+			expect(test.http.callsFor('PATCH /Orders(45)')[0].headers).toEqual({
+				Cookie: 'B1SESSION=sess-1',
+			});
+		},
+	);
+
+	it('keeps the replace header when the request is retried after an expired session', async () => {
+		const test = harness({
+			routes: {
+				'POST /Login': [
+					LOGIN_OK,
+					{ statusCode: 200, body: { SessionId: 'sess-2', SessionTimeout: 30 } },
+				],
+				'PATCH /Orders(45)': [
+					{ statusCode: 401, body: { error: { code: 301, message: 'Invalid session' } } },
+					{ statusCode: 204, body: '' },
+				],
+			},
+			parameters: updateParams({ replaceCollections: true }),
+		});
+
+		await test.run();
+
+		const retried = test.http.callsFor('PATCH /Orders(45)')[1];
+		expect(retried.headers).toEqual({
+			'B1S-ReplaceCollectionsOnPatch': 'true',
+			Cookie: 'B1SESSION=sess-2',
+		});
+	});
+});
+
+describe('Custom API Call: headers', () => {
+	async function runWithHeaders(options: Record<string, unknown>) {
+		const test = harness({
+			routes: { 'PATCH /Orders(45)': { statusCode: 204, body: '' } },
+			parameters: customCallParams('PATCH', '/Orders(45)', '{"Comments": "x"}', options),
+		});
+		const error = await test
+			.run()
+			.then(() => undefined)
+			.catch((caught: unknown) => caught);
+
+		return { test, error, request: test.http.callsFor('PATCH /Orders(45)')[0] };
+	}
+
+	it('sends the given headers next to the session cookie', async () => {
+		const { request, error } = await runWithHeaders(
+			headerOption(['B1S-ReplaceCollectionsOnPatch', 'true'], [' Prefer ', 'return-no-content']),
+		);
+
+		expect(error).toBeUndefined();
+		expect(request.headers).toEqual({
+			'B1S-ReplaceCollectionsOnPatch': 'true',
+			Prefer: 'return-no-content',
+			Cookie: 'B1SESSION=sess-1',
+		});
+	});
+
+	it('skips rows without a name and turns non-string values into text', async () => {
+		const { request } = await runWithHeaders(headerOption(['', 'ignored'], ['X-Count', 3]));
+
+		expect(request.headers).toEqual({ 'X-Count': '3', Cookie: 'B1SESSION=sess-1' });
+	});
+
+	it('sends only the session cookie without the option', async () => {
+		const { request } = await runWithHeaders({});
+
+		expect(request.headers).toEqual({ Cookie: 'B1SESSION=sess-1' });
+	});
+
+	it.each([
+		[
+			'the session cookie',
+			headerOption(['cookie', 'B1SESSION=x']),
+			'The cookie header is managed by the node',
+		],
+		['an invalid name', headerOption(['Bad Name', 'x']), '"Bad Name" is not a valid header name'],
+		[
+			'a name given twice',
+			headerOption(['Prefer', 'a'], ['prefer', 'b']),
+			'The header "prefer" is set twice',
+		],
+		[
+			'a line break in a value',
+			headerOption(['X-Test', 'a\r\nCookie: b']),
+			'The value of header "X-Test" contains a line break',
+		],
+	])('rejects %s before any request or login', async (_case, options, message) => {
+		const { test, error } = await runWithHeaders(options);
+
+		expect(error).toBeInstanceOf(NodeOperationError);
+		expect(flattenErrorText(error)).toContain(message);
+		expect(test.http.countFor('POST /Login')).toBe(0);
+	});
+});
+
 describe('Entity Set across multiple items', () => {
 	it('pairs each output with the item it came from and shares one session', async () => {
 		const test = harness({
@@ -472,8 +600,14 @@ function customCallParams(
 	method: string,
 	endpoint: string,
 	jsonBody: unknown = '',
+	options: Record<string, unknown> = {},
 ): Record<string, ParameterValue> {
-	return { resource: 'customApiCall', method, endpoint, jsonBody };
+	return { resource: 'customApiCall', method, endpoint, jsonBody, options };
+}
+
+/** The Custom API Call `Headers` option as n8n stores a `fixedCollection`. */
+function headerOption(...rows: Array<[unknown, unknown]>): Record<string, unknown> {
+	return { headers: { header: rows.map(([name, value]) => ({ name, value })) } };
 }
 
 describe('Custom API Call', () => {
@@ -548,8 +682,8 @@ describe('Custom API Call', () => {
 	it.each(['GET', 'DELETE'])('never reads or sends a body with %s', async (method) => {
 		const test = harness({
 			routes: { [`${method} /Orders(45)`]: { statusCode: 204, body: '' } },
-			// Only these three parameters are configured; reading jsonBody would throw.
-			parameters: { resource: 'customApiCall', method, endpoint: '/Orders(45)' },
+			// jsonBody is not configured; reading it would throw.
+			parameters: { resource: 'customApiCall', method, endpoint: '/Orders(45)', options: {} },
 		});
 
 		await test.run();

@@ -189,6 +189,71 @@ export function parseJsonBody(
 	return parsed as IDataObject | IDataObject[];
 }
 
+/** An HTTP header field name (RFC 9110 `token`). */
+const HEADER_NAME_PATTERN = /^[!#$%&'*+.^_`|~0-9a-z-]+$/i;
+
+/**
+ * Headers the node sets itself. `Cookie` carries the `B1SESSION`/`ROUTEID`
+ * session; the request layer would silently drop a caller's value, so it is
+ * rejected up front instead.
+ */
+const MANAGED_HEADERS = new Set(['cookie']);
+
+/**
+ * Resolves the Custom API Call `Headers` option (a `fixedCollection` value,
+ * `{ header: [{ name, value }] }`) into request headers. Rows without a name
+ * are skipped; an invalid or managed name, a value with line breaks, and a
+ * name given twice (in any letter case) are rejected before any request.
+ */
+export function resolveCustomHeaders(context: NodeContext, raw: unknown): IDataObject | undefined {
+	const rows = (raw as { header?: Array<{ name?: unknown; value?: unknown }> } | undefined)?.header;
+	const headers: IDataObject = {};
+	const seen = new Set<string>();
+
+	for (const row of rows ?? []) {
+		const name = typeof row.name === 'string' ? row.name.trim() : '';
+
+		if (name === '') {
+			continue;
+		}
+
+		if (!HEADER_NAME_PATTERN.test(name)) {
+			throw new NodeOperationError(context.getNode(), `"${name}" is not a valid header name`, {
+				description: 'Header names may contain letters, digits, and - but no spaces or colons.',
+			});
+		}
+
+		const key = name.toLowerCase();
+
+		if (MANAGED_HEADERS.has(key)) {
+			throw new NodeOperationError(context.getNode(), `The ${name} header is managed by the node`, {
+				description: 'The node sends the Service Layer session cookie itself. Remove this header.',
+			});
+		}
+
+		if (seen.has(key)) {
+			throw new NodeOperationError(context.getNode(), `The header "${name}" is set twice`, {
+				description: 'Header names are case-insensitive. Keep one entry per header.',
+			});
+		}
+
+		const value = row.value === undefined || row.value === null ? '' : String(row.value);
+
+		if (/[\r\n\0]/.test(value)) {
+			throw new NodeOperationError(
+				context.getNode(),
+				`The value of header "${name}" contains a line break`,
+				{ description: 'Header values must be a single line.' },
+			);
+		}
+
+		seen.add(key);
+		headers[name] = value;
+	}
+
+	return seen.size === 0 ? undefined : headers;
+}
+
 /** Turns a Service Layer response body into a single output item's JSON. */
 export function toCustomApiCallOutput(body: unknown, statusCode: number): IDataObject {
 	if (body === undefined || body === null || body === '') {
@@ -206,12 +271,14 @@ export interface CustomApiCallParameters {
 	method: string;
 	endpoint: unknown;
 	jsonBody: unknown;
+	/** The `Headers` option's raw `fixedCollection` value. */
+	headers: unknown;
 }
 
 /**
  * Validates the parameters, then sends the call through the shared
- * authenticated request layer. Validation runs first so a rejected endpoint or
- * body never triggers a login.
+ * authenticated request layer. Validation runs first so a rejected endpoint,
+ * body, or header never triggers a login.
  */
 export async function executeCustomApiCall(
 	this: ServiceLayerCredentialContext,
@@ -228,12 +295,14 @@ export async function executeCustomApiCall(
 	const body = CUSTOM_API_CALL_BODY_METHODS.includes(method)
 		? parseJsonBody(this, parameters.jsonBody)
 		: undefined;
+	const headers = resolveCustomHeaders(this, parameters.headers);
 
 	const { credentials, credentialId } = await getServiceLayerCredentials.call(this, itemIndex);
 	const response = await serviceLayerApiRequest.call(this, credentials, credentialId, {
 		url,
 		method: method as IHttpRequestMethods,
 		...(body === undefined ? {} : { body }),
+		...(headers === undefined ? {} : { headers }),
 	});
 
 	return toCustomApiCallOutput(response.body, response.statusCode);
