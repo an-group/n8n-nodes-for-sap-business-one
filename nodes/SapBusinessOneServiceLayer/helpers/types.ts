@@ -87,7 +87,7 @@ export interface EntityKeyProperty {
 	literalKind: OdataLiteralKind;
 }
 
-/** One property of an entity type, as declared in its `EntityType` block. */
+/** One property of an entity or complex type, as declared in its type block. */
 export interface EntityPropertyDefinition {
 	name: string;
 	edmType: string;
@@ -132,8 +132,41 @@ export interface EntityDefinition {
 	boundFunctions: BoundOperationDefinition[];
 }
 
+/** A structured, keyless type such as `AddressExtension` or `DocumentLine`. */
+export interface ComplexTypeDefinition {
+	/** Unqualified type name, e.g. `DocumentLine` (the `SAPB1.` prefix is stripped). */
+	name: string;
+	properties: EntityPropertyDefinition[];
+}
+
 /** Parsed shape of a Service Layer instance's `/$metadata` (EDMX) document. */
 export interface ServiceLayerMetadata {
 	entities: Map<string, EntityDefinition>;
 	unboundOperations: UnboundOperationDefinition[];
+	/** Keyed by unqualified type name. */
+	complexTypes: Map<string, ComplexTypeDefinition>;
+	/** Unqualified names of every declared `EnumType`, e.g. `BoYesNoEnum`. */
+	enumTypeNames: Set<string>;
+	/**
+	 * Unqualified names of every declared `EntityType`, including those no
+	 * entity set exposes — operation parameters reference entity types directly.
+	 */
+	entityTypeNames: Set<string>;
+}
+
+/**
+ * What a property or parameter type refers to. `unknown` is a name the
+ * metadata does not declare; callers decide how to fall back.
+ */
+export type ServiceLayerTypeCategory = 'primitive' | 'enum' | 'complex' | 'entity' | 'unknown';
+
+/** A classified type reference, with any `Collection(...)` wrapper removed. */
+export interface ServiceLayerTypeInfo {
+	category: ServiceLayerTypeCategory;
+	isCollection: boolean;
+	/**
+	 * The element type: `Edm.*` names are kept qualified, every other name is
+	 * unqualified (e.g. `DocumentLine` for `Collection(SAPB1.DocumentLine)`).
+	 */
+	typeName: string;
 }

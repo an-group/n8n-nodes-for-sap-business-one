@@ -344,3 +344,51 @@ export const EDMX_BOUND_OPERATIONS = `<?xml version="1.0" encoding="UTF-8"?>
   </edmx:DataServices>
 </edmx:Edmx>
 `;
+
+/**
+ * `ComplexType` and `EnumType` declarations, kept as a bare fragment so a test
+ * can splice them into `SYNTHETIC_EDMX_V4` and prove the entity and operation
+ * output does not change.
+ *
+ * Mirrors what a real Service Layer document contains: complex types with and
+ * without `OpenType`, one self-closing complex type with no properties, and
+ * `Event` declared twice (here with differing bodies, so the test can tell
+ * which declaration is kept). Attribute order varies on purpose.
+ */
+export const COMPLEX_AND_ENUM_TYPE_DECLARATIONS = `
+      <ComplexType Name="DocumentLine">
+        <Property Name="ItemCode" Type="Edm.String"/>
+        <Property Name="LineNum" Nullable="false" Type="Edm.Int32"/>
+        <Property Name="Quantity" Type="Edm.Double"/>
+        <Property Name="TaxOnly" Type="SAPB1.BoYesNoEnum"/>
+        <Property Name="Address" Type="SAPB1.AddressExtension"/>
+        <Property Name="LineTaxJurisdictions" Type="Collection(SAPB1.LineTaxJurisdiction)"/>
+      </ComplexType>
+      <ComplexType OpenType="true" Name="AddressExtension">
+        <Property Type="Edm.String" Name="ShipToStreet"/>
+        <Property Type="Edm.String" Nullable="false" Name="BillToCity"/>
+      </ComplexType>
+      <ComplexType Name="LineTaxJurisdiction" OpenType="true">
+        <Property Name="JurisdictionCode" Type="Edm.String"/>
+      </ComplexType>
+      <ComplexType Name="DocumentDistributedExpense"/>
+      <ComplexType Name="Event">
+        <Property Name="WebhookID" Type="Edm.String"/>
+      </ComplexType>
+      <ComplexType Name="Event">
+        <Property Name="SecondDeclaration" Type="Edm.String"/>
+      </ComplexType>
+      <EnumType IsFlags="false" Name="BoYesNoEnum" UnderlyingType="Edm.Int32">
+        <Member Name="tNO" Value="0"/>
+        <Member Name="tYES" Value="1"/>
+      </EnumType>
+      <EnumType Name="BoStatus" UnderlyingType="Edm.Int32" IsFlags="false">
+        <Member Name="bost_Open" Value="0"/>
+      </EnumType>
+`;
+
+/** `SYNTHETIC_EDMX_V4` with `COMPLEX_AND_ENUM_TYPE_DECLARATIONS` spliced in ahead of the container. */
+export const EDMX_COMPLEX_AND_ENUM_TYPES = SYNTHETIC_EDMX_V4.replace(
+	'      <EntityContainer Name="SAPB1">',
+	`${COMPLEX_AND_ENUM_TYPE_DECLARATIONS}\n      <EntityContainer Name="SAPB1">`,
+);
