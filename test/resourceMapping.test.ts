@@ -14,6 +14,7 @@ import {
 	EDMX_BROKEN_ENTITY_SET,
 	EDMX_FIELD_TYPES,
 	EDMX_SERVICE_OPERATIONS,
+	EDMX_STRUCTURED_PROPERTIES,
 	EDMX_V1,
 	SYNTHETIC_EDMX_V4,
 } from './fixtures/metadataDocuments';
@@ -137,21 +138,42 @@ describe('getEntityKeys', () => {
 });
 
 describe('getEntityFields', () => {
-	it('lists mappable properties in declaration order, excluding collections', async () => {
-		// DocumentLines is Collection(SAPB1.DocumentLine): a nested array of
-		// complex objects a flat mapper cannot represent.
+	it('lists every property in declaration order, collections as array fields', async () => {
+		// SYNTHETIC_EDMX_V4 never declares DocumentLine; a collection is an array
+		// field whatever its element type resolves to.
 		await expect(fieldsFor('Orders', 'create')).resolves.toEqual({
 			fields: [
 				bodyField('CardCode', 'string'),
 				bodyField('DocEntry', 'number'),
 				bodyField('DocTotal', 'number'),
+				bodyField('DocumentLines', 'array'),
 			],
 		});
 	});
 
 	it('excludes the key from an update body', async () => {
 		await expect(fieldsFor('Orders', 'update')).resolves.toEqual({
-			fields: [bodyField('CardCode', 'string'), bodyField('DocTotal', 'number')],
+			fields: [
+				bodyField('CardCode', 'string'),
+				bodyField('DocTotal', 'number'),
+				bodyField('DocumentLines', 'array'),
+			],
+		});
+	});
+
+	it('offers complex properties as object fields and collections as array fields', async () => {
+		await expect(fieldsFor('Orders', 'update', EDMX_STRUCTURED_PROPERTIES)).resolves.toEqual({
+			fields: [
+				bodyField('CardCode', 'string'),
+				// Enums keep their free-text field until they get dropdowns (#27).
+				bodyField('DocumentStatus', 'string'),
+				bodyField('AddressExtension', 'object'),
+				bodyField('DocumentLines', 'array'),
+				bodyField('Approver', 'object'),
+				bodyField('Tags', 'array'),
+				// A type the metadata never declares falls back to the old behaviour.
+				bodyField('Mystery', 'string'),
+			],
 		});
 	});
 
@@ -181,6 +203,7 @@ describe('getEntityFields', () => {
 				bodyField('CardCode', 'string'),
 				bodyField('DocEntry', 'number'),
 				bodyField('DocTotal', 'number'),
+				bodyField('DocumentLines', 'array'),
 			],
 		});
 	});
@@ -211,8 +234,14 @@ describe('getEntityFields', () => {
 		});
 	});
 
-	it('returns an empty list, and no notice, when every property is filtered out', async () => {
+	it('offers the collection of an entity that has nothing else', async () => {
 		await expect(fieldsFor('LineContainers', 'create', EDMX_FIELD_TYPES)).resolves.toEqual({
+			fields: [bodyField('Lines', 'array')],
+		});
+	});
+
+	it('returns an empty list, and no notice, when every property is filtered out', async () => {
+		await expect(fieldsFor('KeyOnlys', 'update', EDMX_STRUCTURED_PROPERTIES)).resolves.toEqual({
 			fields: [],
 		});
 

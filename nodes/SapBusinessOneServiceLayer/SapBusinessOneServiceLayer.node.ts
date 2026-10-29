@@ -14,6 +14,7 @@ import {
 	getServiceLayerCredentials,
 } from './helpers/credentials';
 import { CUSTOM_API_CALL_BODY_METHODS, executeCustomApiCall } from './helpers/customApiCall';
+import { buildEntityBody } from './helpers/entityBody';
 import { buildEntityKeySegment } from './helpers/entityPath';
 import { getServiceLayerMetadata } from './helpers/metadata';
 import { fetchEntityCollection, serviceLayerApiRequest } from './helpers/request';
@@ -489,7 +490,12 @@ export class SapBusinessOneServiceLayer implements INodeType {
 						{
 							url: `/${entitySetName}`,
 							method: 'POST',
-							body: getMappedValues(this, 'entityFields', itemIndex),
+							body: buildEntityBody(
+								this,
+								entity,
+								metadata,
+								getMappedValues(this, 'entityFields', itemIndex),
+							),
 						},
 					);
 					returnData.push({ json: body as IDataObject, pairedItem: { item: itemIndex } });
@@ -499,7 +505,12 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				if (operation === 'update') {
 					const keyValues = getMappedValues(this, 'keyFields', itemIndex);
 					const keySegment = buildEntityKeySegment(this, entity, keyValues);
-					const fieldValues = getMappedValues(this, 'entityFields', itemIndex);
+					const fieldValues = buildEntityBody(
+						this,
+						entity,
+						metadata,
+						getMappedValues(this, 'entityFields', itemIndex),
+					);
 
 					// The Service Layer returns 204 No Content on a successful PATCH. Default
 					// JSON parsing is kept (not json: false): an empty body parses to '' without
