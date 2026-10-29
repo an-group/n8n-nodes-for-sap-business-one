@@ -456,3 +456,106 @@ export const EDMX_STRUCTURED_PROPERTIES = `<?xml version="1.0" encoding="UTF-8"?
   </edmx:DataServices>
 </edmx:Edmx>
 `;
+
+/**
+ * Operations whose parameters are declared complex, entity, and enum types,
+ * for expanding a single structured parameter into individual fields. Modelled
+ * on the real Service Layer: most unbound Actions take exactly one complex
+ * (`BankStatementParams`) or entity (`SAPB1.Document`) parameter. `Document`
+ * has no entity set on purpose — operation parameters reference entity types
+ * directly. `MergeService_Merge` (two complex parameters), `BatchService_PostLines`
+ * (a collection), and `EmptyService_Run` (a type without properties) keep one
+ * field per parameter. `ReportService_GetReport` is a synthetic function: no
+ * real function takes a complex parameter.
+ */
+export const EDMX_EXPANDED_PARAMETERS = `<?xml version="1.0" encoding="UTF-8"?>
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
+  <edmx:DataServices>
+    <Schema Namespace="SAPB1" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+
+      <EnumType Name="BoStatus">
+        <Member Name="bost_Open" Value="0"/>
+        <Member Name="bost_Close" Value="1"/>
+      </EnumType>
+
+      <ComplexType Name="BankStatementParams">
+        <Property Name="BankAccountKey" Type="Edm.Int32"/>
+        <Property Name="StatementDate" Type="Edm.DateTimeOffset"/>
+        <Property Name="Status" Type="SAPB1.BoStatus"/>
+        <Property Name="Address" Type="SAPB1.AddressExtension"/>
+        <Property Name="Lines" Type="Collection(SAPB1.StatementLine)"/>
+      </ComplexType>
+      <ComplexType Name="AddressExtension">
+        <Property Name="Street" Type="Edm.String"/>
+      </ComplexType>
+      <ComplexType Name="StatementLine">
+        <Property Name="Amount" Type="Edm.Double"/>
+      </ComplexType>
+      <ComplexType Name="EmptyParams"/>
+
+      <EntityType Name="Document" OpenType="true">
+        <Key>
+          <PropertyRef Name="DocEntry"/>
+        </Key>
+        <Property Name="DocEntry" Nullable="false" Type="Edm.Int32"/>
+        <Property Name="CardCode" Type="Edm.String"/>
+      </EntityType>
+
+      <EntityType Name="BankPage" OpenType="true">
+        <Key>
+          <PropertyRef Name="Sequence"/>
+        </Key>
+        <Property Name="Sequence" Nullable="false" Type="Edm.Int32"/>
+      </EntityType>
+
+      <Action Name="BankStatementsService_GetBankStatementList">
+        <Parameter Name="BankStatementParams" Type="SAPB1.BankStatementParams"/>
+        <ReturnType Type="Collection(SAPB1.BankStatementParams)"/>
+      </Action>
+
+      <Action Name="DocumentsService_Preview">
+        <Parameter Name="Document" Type="SAPB1.Document"/>
+      </Action>
+
+      <Action Name="MergeService_Merge">
+        <Parameter Name="Source" Type="SAPB1.BankStatementParams"/>
+        <Parameter Name="Target" Type="SAPB1.BankStatementParams"/>
+      </Action>
+
+      <Action Name="BatchService_PostLines">
+        <Parameter Name="Lines" Type="Collection(SAPB1.StatementLine)"/>
+      </Action>
+
+      <Action Name="EmptyService_Run">
+        <Parameter Name="Params" Type="SAPB1.EmptyParams"/>
+      </Action>
+
+      <Action Name="StatusService_SetStatus">
+        <Parameter Name="Code" Type="Edm.String"/>
+        <Parameter Name="Status" Type="SAPB1.BoStatus"/>
+      </Action>
+
+      <Function Name="ReportService_GetReport">
+        <Parameter Name="ReportParams" Type="SAPB1.BankStatementParams"/>
+      </Function>
+
+      <Action IsBound="true" Name="Reconcile">
+        <Parameter Name="BankPageParams" Type="SAPB1.BankPage"/>
+        <Parameter Name="BankStatementParams" Type="SAPB1.BankStatementParams"/>
+      </Action>
+
+      <EntityContainer Name="SAPB1">
+        <EntitySet EntityType="SAPB1.BankPage" Name="BankPages"/>
+        <ActionImport Action="SAPB1.BankStatementsService_GetBankStatementList" Name="BankStatementsService_GetBankStatementList"/>
+        <ActionImport Action="SAPB1.DocumentsService_Preview" Name="DocumentsService_Preview"/>
+        <ActionImport Action="SAPB1.MergeService_Merge" Name="MergeService_Merge"/>
+        <ActionImport Action="SAPB1.BatchService_PostLines" Name="BatchService_PostLines"/>
+        <ActionImport Action="SAPB1.EmptyService_Run" Name="EmptyService_Run"/>
+        <ActionImport Action="SAPB1.StatusService_SetStatus" Name="StatusService_SetStatus"/>
+        <FunctionImport Function="SAPB1.ReportService_GetReport" Name="ReportService_GetReport"/>
+      </EntityContainer>
+
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>
+`;

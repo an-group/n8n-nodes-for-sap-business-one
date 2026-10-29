@@ -12,6 +12,7 @@ import {
 import {
 	EDMX_BOUND_OPERATIONS,
 	EDMX_BROKEN_ENTITY_SET,
+	EDMX_EXPANDED_PARAMETERS,
 	EDMX_FIELD_TYPES,
 	EDMX_SERVICE_OPERATIONS,
 	EDMX_STRUCTURED_PROPERTIES,
@@ -331,7 +332,7 @@ describe('getServiceOperationParameters', () => {
 		});
 	});
 
-	it('maps a complex parameter to an object field', async () => {
+	it('maps a parameter of a type the metadata does not declare to an object field', async () => {
 		await expect(parametersFor('BankStatementsService_GetBankStatementList')).resolves.toEqual({
 			fields: [bodyField('BankStatementParams', 'object')],
 		});
@@ -362,6 +363,72 @@ describe('getServiceOperationParameters', () => {
 
 		await expect(getServiceOperationParameters.call(context)).resolves.toEqual({ fields: [] });
 		expect(http.calls).toHaveLength(0);
+	});
+});
+
+async function expandedParametersFor(serviceOperation: string) {
+	const { context } = scenario({
+		parameters: { serviceOperation },
+		metadataXml: EDMX_EXPANDED_PARAMETERS,
+	});
+
+	return await getServiceOperationParameters.call(context);
+}
+
+describe('getServiceOperationParameters: a single complex or entity parameter', () => {
+	const BANK_STATEMENT_FIELDS = [
+		bodyField('BankAccountKey', 'number'),
+		bodyField('StatementDate', 'dateTime'),
+		bodyField('Status', 'string'),
+		bodyField('Address', 'object'),
+		bodyField('Lines', 'array'),
+	];
+
+	it("expands a complex parameter into its type's properties, nested ones as JSON fields", async () => {
+		await expect(
+			expandedParametersFor('BankStatementsService_GetBankStatementList'),
+		).resolves.toEqual({ fields: BANK_STATEMENT_FIELDS });
+	});
+
+	it("expands an entity-type parameter into the entity type's properties, without an entity set", async () => {
+		await expect(expandedParametersFor('DocumentsService_Preview')).resolves.toEqual({
+			fields: [bodyField('DocEntry', 'number'), bodyField('CardCode', 'string')],
+		});
+	});
+
+	it('keeps one JSON field per parameter for several complex parameters', async () => {
+		await expect(expandedParametersFor('MergeService_Merge')).resolves.toEqual({
+			fields: [bodyField('Source', 'object'), bodyField('Target', 'object')],
+		});
+	});
+
+	it('keeps a collection parameter as one array field', async () => {
+		await expect(expandedParametersFor('BatchService_PostLines')).resolves.toEqual({
+			fields: [bodyField('Lines', 'array')],
+		});
+	});
+
+	it('keeps a complex type without properties as one object field', async () => {
+		await expect(expandedParametersFor('EmptyService_Run')).resolves.toEqual({
+			fields: [bodyField('Params', 'object')],
+		});
+	});
+
+	it('maps an enum parameter to a plain field', async () => {
+		await expect(expandedParametersFor('StatusService_SetStatus')).resolves.toEqual({
+			fields: [bodyField('Code', 'string'), bodyField('Status', 'string')],
+		});
+	});
+
+	it('expands the parameter of a bound action the same way', async () => {
+		const { context } = scenario({
+			parameters: { entitySet: 'BankPages', boundOperation: 'Reconcile' },
+			metadataXml: EDMX_EXPANDED_PARAMETERS,
+		});
+
+		await expect(getBoundOperationParameters.call(context)).resolves.toEqual({
+			fields: BANK_STATEMENT_FIELDS,
+		});
 	});
 });
 

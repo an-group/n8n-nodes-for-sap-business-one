@@ -73,11 +73,11 @@ describe('parseMetadataXml', () => {
 		expect(entityOf('Reports').keys).toEqual([]);
 	});
 
-	it('marks collection-valued properties', () => {
+	it('keeps the Collection(...) wrapper of a collection-valued property in its type', () => {
 		const byName = new Map(entityOf('Orders').properties.map((p) => [p.name, p]));
 
-		expect(byName.get('DocumentLines')?.isCollection).toBe(true);
-		expect(byName.get('CardCode')?.isCollection).toBe(false);
+		expect(byName.get('DocumentLines')?.edmType).toMatch(/^Collection\(/);
+		expect(byName.get('CardCode')?.edmType).toBe('Edm.String');
 	});
 
 	it('reads nullability, defaulting to nullable when the attribute is absent', () => {
@@ -154,7 +154,7 @@ describe('parseMetadataXml', () => {
 		expect(metadata.unboundOperations).toEqual([]);
 		expect(metadata.complexTypes.size).toBe(0);
 		expect(metadata.enumTypeNames.size).toBe(0);
-		expect(metadata.entityTypeNames.size).toBe(0);
+		expect(metadata.entityTypes.size).toBe(0);
 	});
 });
 
@@ -165,24 +165,18 @@ describe('parseMetadataXml complex and enum types', () => {
 		expect(EDMX_COMPLEX_AND_ENUM_TYPES).not.toBe(SYNTHETIC_EDMX_V4);
 	});
 
-	it('parses complex type properties with type, nullability, and collection flag', () => {
+	it('parses complex type properties with type and nullability', () => {
 		expect(metadata.complexTypes.get('DocumentLine')).toEqual({
 			name: 'DocumentLine',
 			properties: [
-				{ name: 'ItemCode', edmType: 'Edm.String', isCollection: false, nullable: true },
-				{ name: 'LineNum', edmType: 'Edm.Int32', isCollection: false, nullable: false },
-				{ name: 'Quantity', edmType: 'Edm.Double', isCollection: false, nullable: true },
-				{ name: 'TaxOnly', edmType: 'SAPB1.BoYesNoEnum', isCollection: false, nullable: true },
-				{
-					name: 'Address',
-					edmType: 'SAPB1.AddressExtension',
-					isCollection: false,
-					nullable: true,
-				},
+				{ name: 'ItemCode', edmType: 'Edm.String', nullable: true },
+				{ name: 'LineNum', edmType: 'Edm.Int32', nullable: false },
+				{ name: 'Quantity', edmType: 'Edm.Double', nullable: true },
+				{ name: 'TaxOnly', edmType: 'SAPB1.BoYesNoEnum', nullable: true },
+				{ name: 'Address', edmType: 'SAPB1.AddressExtension', nullable: true },
 				{
 					name: 'LineTaxJurisdictions',
 					edmType: 'Collection(SAPB1.LineTaxJurisdiction)',
-					isCollection: true,
 					nullable: true,
 				},
 			],
@@ -191,8 +185,8 @@ describe('parseMetadataXml complex and enum types', () => {
 
 	it('reads attributes regardless of their order', () => {
 		expect(metadata.complexTypes.get('AddressExtension')?.properties).toEqual([
-			{ name: 'ShipToStreet', edmType: 'Edm.String', isCollection: false, nullable: true },
-			{ name: 'BillToCity', edmType: 'Edm.String', isCollection: false, nullable: false },
+			{ name: 'ShipToStreet', edmType: 'Edm.String', nullable: true },
+			{ name: 'BillToCity', edmType: 'Edm.String', nullable: false },
 		]);
 		expect(metadata.complexTypes.has('LineTaxJurisdiction')).toBe(true);
 		expect(metadata.enumTypeNames.has('BoStatus')).toBe(true);
@@ -215,14 +209,18 @@ describe('parseMetadataXml complex and enum types', () => {
 		expect([...metadata.enumTypeNames]).toEqual(['BoYesNoEnum', 'BoStatus']);
 	});
 
-	it('collects every entity type name, including ones no entity set exposes', () => {
-		expect([...metadata.entityTypeNames]).toEqual([
+	it('collects every entity type, including ones no entity set exposes', () => {
+		expect([...metadata.entityTypes.keys()]).toEqual([
 			'Order',
 			'SalesTaxAuthority',
 			'Item',
 			'Ghost',
 			'Report',
 		]);
+		expect(metadata.entityTypes.get('Order')).toEqual({
+			name: 'Order',
+			properties: metadata.entities.get('Orders')?.properties,
+		});
 	});
 
 	it('leaves the entity and operation output unchanged', () => {

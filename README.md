@@ -175,7 +175,7 @@ These are planned and not yet available in the current development version.
   - lines missing from the array stay unchanged, and an empty array (`[]`) changes nothing — lines cannot be removed through Update
   - a single complex property (`AddressExtension`) is merged field by field: sub-fields not sent keep their value
 
-  To replace collections instead, turn on **Options → Replace Collections**. Update then sends the `B1S-ReplaceCollectionsOnPatch: true` request header, and the lines sent replace the existing ones — observed live both with and without other properties in the same update.
+  To replace collections instead, turn on **Replace Collections**. Update then sends the `B1S-ReplaceCollectionsOnPatch: true` request header, and the lines sent replace the existing ones — observed live both with and without other properties in the same update.
 - **Get Many** pagination — the Service Layer defaults to 20 rows per page regardless of how many match. `Get Many` requests the page size it actually needs (`Limit`, or unlimited for `Return All`) via the `Prefer: odata.maxpagesize` request header, which normally returns everything in a single request; the server's own pagination (`@odata.nextLink`) is still followed as a fallback if a very large result is nonetheless split across pages.
 
 #### Execute Action or Function
@@ -196,18 +196,18 @@ The output follows the Custom API Call convention.
 Calls an unbound Action or Function from the connected instance's metadata, without building the URL or request body yourself. Requests go through the same authenticated request layer as the other resources.
 
 - **Service Operation** — a metadata-driven list of every unbound Action and Function. The label shows the kind, for example `CompanyService_GetCompanyInfo (Function)` or `QueryService_PostQuery (Action)`; the node picks the HTTP method from it.
-- **Parameters** — a metadata-driven field mapper listing the selected operation's parameters:
-  - simple parameters (`Edm.*`) get a field of the matching type
-  - complex parameters (for example `SAPB1.Document`) get a JSON object field
+- **Parameters** — a metadata-driven field mapper for the selected operation's parameters. Most Actions take exactly one complex or entity parameter, for example `SeriesService_GetDocumentSeries(DocumentTypeParams)` or `…_ApproveAndAdd(Document)`. For these, the mapper lists that type's properties as individual fields, handled like the **Fields** of Create: simple and enum properties get a field of the matching type, nested complex properties a JSON object field and collection properties a JSON array field. The values are sent wrapped under the parameter name, for example `{ "DocumentTypeParams": { "Document": "17" } }` — verified against a live Service Layer. Every other operation gets one field per parameter:
+  - simple and enum parameters get a field of the matching type
+  - complex parameters get a JSON object field
   - collection parameters (`Collection(...)`) get a JSON array field
 
-  Every parameter is optional, because the Service Layer metadata marks none of them as required; a missing value is reported by the Service Layer itself. Fields left empty are not sent. Invalid JSON, or JSON of the wrong shape, fails with a clear error before any request is sent. An expression that resolves to an object or array is used as-is.
+  To pass a whole structured parameter as one JSON value, for example from an expression, use **Custom API Call**.
+
+  Every parameter is optional, because the Service Layer metadata marks none of them as required; a missing value is reported by the Service Layer itself. Fields left empty are not sent; when every field of an expanded parameter is empty, the Action is sent without a body, which the Service Layer treats like an empty object. Invalid JSON, or JSON of the wrong shape, fails with a clear error before any request is sent. An expression that resolves to an object or array is used as-is.
 
 Actions are sent as `POST /<Action>` with the parameters as a JSON body, or no body when there are none. Functions are sent as `GET /<Function>(Name=value,...)`, with every value written as an OData literal of its declared type (strings quoted and escaped, numbers unquoted); a function without values is called as `/<Function>()`. A function parameter of a complex type cannot be written into the URL and is rejected; no function in the Service Layer metadata declares one.
 
 The output follows the Custom API Call convention below: one output item per input item, object responses unchanged and collections not split, `{ "success": true, "statusCode": 204 }` for an empty response, and any other response under `data`.
-
-Entering complex parameters as individual fields instead of JSON is planned for a later release.
 
 ### Custom API Call
 

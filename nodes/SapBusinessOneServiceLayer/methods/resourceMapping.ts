@@ -1,10 +1,19 @@
-import type { ILoadOptionsFunctions, ResourceMapperField, ResourceMapperFields } from 'n8n-workflow';
+import type {
+	ILoadOptionsFunctions,
+	ResourceMapperField,
+	ResourceMapperFields,
+} from 'n8n-workflow';
 
 import { loadServiceLayerMetadata } from '../helpers/credentials';
 import { getEntityPropertyShape } from '../helpers/entityBody';
 import { classifyEdmType } from '../helpers/odataLiteral';
-import { getOperationParameterShape } from '../helpers/serviceOperation';
-import type { EntityDefinition, OperationParameter, ServiceLayerMetadata } from '../helpers/types';
+import { getExpandedParameter, getOperationParameterShape } from '../helpers/serviceOperation';
+import type {
+	EntityPropertyDefinition,
+	OperationParameter,
+	ServiceLayerMetadata,
+	EntityDefinition,
+} from '../helpers/types';
 
 function mapEdmTypeToFieldType(edmType: string): ResourceMapperField['type'] {
 	const literalKind = classifyEdmType(edmType);
@@ -77,23 +86,36 @@ export async function getEntityFields(this: ILoadOptionsFunctions): Promise<Reso
 	const operation = this.getNodeParameter('operation') as string;
 	const keyNames = new Set(entity.keys.map((key) => key.name));
 
-	const fields: ResourceMapperField[] = entity.properties
-		.filter((property) => operation !== 'update' || !keyNames.has(property.name))
-		.map((property) => {
-			const shape = getEntityPropertyShape(property.edmType, metadata);
-
-			return {
-				id: property.name,
-				displayName: property.name,
-				type: shape === 'primitive' ? mapEdmTypeToFieldType(property.edmType) : shape,
-				required: false,
-				defaultMatch: false,
-				canBeUsedToMatch: false,
-				display: true,
-			};
-		});
+	const fields = getPropertyFields(
+		entity.properties.filter((property) => operation !== 'update' || !keyNames.has(property.name)),
+		metadata,
+	);
 
 	return { fields };
+}
+
+/**
+ * One mapper field per property of an entity or complex type. Collection and
+ * complex properties get a JSON editor (`array`/`object`); see
+ * `getEntityPropertyShape`.
+ */
+function getPropertyFields(
+	properties: EntityPropertyDefinition[],
+	metadata: ServiceLayerMetadata,
+): ResourceMapperField[] {
+	return properties.map((property) => {
+		const shape = getEntityPropertyShape(property.edmType, metadata);
+
+		return {
+			id: property.name,
+			displayName: property.name,
+			type: shape === 'primitive' ? mapEdmTypeToFieldType(property.edmType) : shape,
+			required: false,
+			defaultMatch: false,
+			canBeUsedToMatch: false,
+			display: true,
+		};
+	});
 }
 
 /**
@@ -138,9 +160,12 @@ export async function getEntityKeys(this: ILoadOptionsFunctions): Promise<Resour
  * Action or Function parameter as non-nullable, so required-ness cannot be
  * derived, and a missing value is reported by the Service Layer itself.
  */
-function getOperationParameterFields(parameters: OperationParameter[]): ResourceMapperField[] {
+function getOperationParameterFields(
+	parameters: OperationParameter[],
+	metadata: ServiceLayerMetadata,
+): ResourceMapperField[] {
 	return parameters.map((parameter) => {
-		const shape = getOperationParameterShape(parameter.edmType);
+		const shape = getOperationParameterShape(parameter.edmType, metadata);
 
 		return {
 			id: parameter.name,
@@ -179,7 +204,7 @@ export async function getServiceOperationParameters(
 		};
 	}
 
-	return toOperationParameterFields(operation);
+	return toOperationParameterFields(operation, metadata);
 }
 
 /**
@@ -190,12 +215,13 @@ export async function getServiceOperationParameters(
 export async function getBoundOperationParameters(
 	this: ILoadOptionsFunctions,
 ): Promise<ResourceMapperFields> {
-	const entity = await getSelectedEntity.call(this);
+	const selected = await getSelectedEntityWithMetadata.call(this);
 
-	if (entity === undefined) {
+	if (selected === undefined) {
 		return { fields: [] };
 	}
 
+	const { entity, metadata } = selected;
 	const operationName = this.getNodeParameter('boundOperation') as string;
 
 	if (!operationName) {
@@ -213,13 +239,18 @@ export async function getBoundOperationParameters(
 		};
 	}
 
-	return toOperationParameterFields(operation);
+	return toOperationParameterFields(operation, metadata);
 }
 
-function toOperationParameterFields(operation: {
-	name: string;
-	parameters: OperationParameter[];
-}): ResourceMapperFields {
+/**
+ * An operation whose only parameter is one complex or entity value is
+ * expanded: the mapper lists that type's properties, and the request wraps
+ * them under the parameter name (see `getExpandedParameter`).
+ */
+function toOperationParameterFields(
+	operation: { name: string; parameters: OperationParameter[] },
+	metadata: ServiceLayerMetadata,
+): ResourceMapperFields {
 	if (operation.parameters.length === 0) {
 		return {
 			fields: [],
@@ -227,5 +258,12 @@ function toOperationParameterFields(operation: {
 		};
 	}
 
-	return { fields: getOperationParameterFields(operation.parameters) };
+	const expanded = getExpandedParameter(operation.parameters, metadata);
+
+	return {
+		fields:
+			expanded === undefined
+				? getOperationParameterFields(operation.parameters, metadata)
+				: getPropertyFields(expanded.properties, metadata),
+	};
 }
