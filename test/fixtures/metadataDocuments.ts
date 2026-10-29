@@ -392,3 +392,67 @@ export const EDMX_COMPLEX_AND_ENUM_TYPES = SYNTHETIC_EDMX_V4.replace(
 	'      <EntityContainer Name="SAPB1">',
 	`${COMPLEX_AND_ENUM_TYPE_DECLARATIONS}\n      <EntityContainer Name="SAPB1">`,
 );
+
+/**
+ * One entity type with every property shape the Create/Update `Fields` mapper
+ * distinguishes: primitive, enum, single complex (`AddressExtension`), complex
+ * collection (`DocumentLines`, as on `Orders`), plus shapes the real Service
+ * Layer document does not use on entity types but the classifier still has to
+ * place — an entity-typed property, a primitive collection, and a type the
+ * document never declares. `KeyOnly` has nothing left to set on Update.
+ */
+export const EDMX_STRUCTURED_PROPERTIES = `<?xml version="1.0" encoding="UTF-8"?>
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
+  <edmx:DataServices>
+    <Schema Namespace="SAPB1" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+
+      <EntityType Name="Document" OpenType="true">
+        <Key>
+          <PropertyRef Name="DocEntry"/>
+        </Key>
+        <Property Name="DocEntry" Nullable="false" Type="Edm.Int32"/>
+        <Property Name="CardCode" Type="Edm.String"/>
+        <Property Name="DocumentStatus" Type="SAPB1.BoStatus"/>
+        <Property Name="AddressExtension" Type="SAPB1.AddressExtension"/>
+        <Property Name="DocumentLines" Type="Collection(SAPB1.DocumentLine)"/>
+        <Property Name="Approver" Type="SAPB1.Employee"/>
+        <Property Name="Tags" Type="Collection(Edm.String)"/>
+        <Property Name="Mystery" Type="SAPB1.Undeclared"/>
+      </EntityType>
+
+      <EntityType Name="Employee" OpenType="true">
+        <Key>
+          <PropertyRef Name="EmployeeID"/>
+        </Key>
+        <Property Name="EmployeeID" Nullable="false" Type="Edm.Int32"/>
+      </EntityType>
+
+      <EntityType Name="KeyOnly" OpenType="true">
+        <Key>
+          <PropertyRef Name="Code"/>
+        </Key>
+        <Property Name="Code" Nullable="false" Type="Edm.String"/>
+      </EntityType>
+
+      <ComplexType Name="DocumentLine">
+        <Property Name="ItemCode" Type="Edm.String"/>
+        <Property Name="LineNum" Nullable="false" Type="Edm.Int32"/>
+        <Property Name="Quantity" Type="Edm.Double"/>
+      </ComplexType>
+      <ComplexType OpenType="true" Name="AddressExtension">
+        <Property Type="Edm.String" Name="ShipToStreet"/>
+      </ComplexType>
+      <EnumType IsFlags="false" Name="BoStatus" UnderlyingType="Edm.Int32">
+        <Member Name="bost_Open" Value="0"/>
+        <Member Name="bost_Close" Value="1"/>
+      </EnumType>
+
+      <EntityContainer Name="SAPB1">
+        <EntitySet EntityType="SAPB1.Document" Name="Orders"/>
+        <EntitySet EntityType="SAPB1.KeyOnly" Name="KeyOnlys"/>
+      </EntityContainer>
+
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>
+`;

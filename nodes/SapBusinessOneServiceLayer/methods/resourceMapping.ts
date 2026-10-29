@@ -1,9 +1,10 @@
 import type { ILoadOptionsFunctions, ResourceMapperField, ResourceMapperFields } from 'n8n-workflow';
 
 import { loadServiceLayerMetadata } from '../helpers/credentials';
+import { getEntityPropertyShape } from '../helpers/entityBody';
 import { classifyEdmType } from '../helpers/odataLiteral';
 import { getOperationParameterShape } from '../helpers/serviceOperation';
-import type { EntityDefinition, OperationParameter } from '../helpers/types';
+import type { EntityDefinition, OperationParameter, ServiceLayerMetadata } from '../helpers/types';
 
 function mapEdmTypeToFieldType(edmType: string): ResourceMapperField['type'] {
 	const literalKind = classifyEdmType(edmType);
@@ -26,6 +27,12 @@ function mapEdmTypeToFieldType(edmType: string): ResourceMapperField['type'] {
 async function getSelectedEntity(
 	this: ILoadOptionsFunctions,
 ): Promise<EntityDefinition | undefined> {
+	return (await getSelectedEntityWithMetadata.call(this))?.entity;
+}
+
+async function getSelectedEntityWithMetadata(
+	this: ILoadOptionsFunctions,
+): Promise<{ entity: EntityDefinition; metadata: ServiceLayerMetadata } | undefined> {
 	const entitySetName = this.getNodeParameter('entitySet') as string;
 
 	if (!entitySetName) {
@@ -33,18 +40,19 @@ async function getSelectedEntity(
 	}
 
 	const metadata = await loadServiceLayerMetadata.call(this);
+	const entity = metadata.entities.get(entitySetName);
 
-	return metadata.entities.get(entitySetName);
+	return entity === undefined ? undefined : { entity, metadata };
 }
 
 /**
  * Populates the Create/Update resource-mapper field list from the selected
  * entity set's metadata.
  *
- * Collection/navigation properties (e.g. `Orders.DocumentLines`) are excluded:
- * they are nested arrays of complex objects a flat field mapper cannot
- * represent, so entities whose meaningful data lives in a line-item
- * collection can only have their header fields set here.
+ * Collection properties (e.g. `Orders.DocumentLines`) are offered as `array`
+ * fields and single complex properties (e.g. `AddressExtension`) as `object`
+ * fields, both with a JSON editor; see `getEntityPropertyShape`. Navigation
+ * properties are not parsed and never offered.
  *
  * Key properties are included for Create (some entity sets require a
  * user-supplied key, e.g. `CardCode`; others are server-assigned, e.g.
@@ -59,27 +67,31 @@ async function getSelectedEntity(
  * they actually need to set.
  */
 export async function getEntityFields(this: ILoadOptionsFunctions): Promise<ResourceMapperFields> {
-	const entity = await getSelectedEntity.call(this);
+	const selected = await getSelectedEntityWithMetadata.call(this);
 
-	if (entity === undefined) {
+	if (selected === undefined) {
 		return { fields: [] };
 	}
 
+	const { entity, metadata } = selected;
 	const operation = this.getNodeParameter('operation') as string;
 	const keyNames = new Set(entity.keys.map((key) => key.name));
 
 	const fields: ResourceMapperField[] = entity.properties
-		.filter((property) => !property.isCollection)
 		.filter((property) => operation !== 'update' || !keyNames.has(property.name))
-		.map((property) => ({
-			id: property.name,
-			displayName: property.name,
-			type: mapEdmTypeToFieldType(property.edmType),
-			required: false,
-			defaultMatch: false,
-			canBeUsedToMatch: false,
-			display: true,
-		}));
+		.map((property) => {
+			const shape = getEntityPropertyShape(property.edmType, metadata);
+
+			return {
+				id: property.name,
+				displayName: property.name,
+				type: shape === 'primitive' ? mapEdmTypeToFieldType(property.edmType) : shape,
+				required: false,
+				defaultMatch: false,
+				canBeUsedToMatch: false,
+				display: true,
+			};
+		});
 
 	return { fields };
 }

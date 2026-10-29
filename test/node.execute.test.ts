@@ -6,6 +6,7 @@ import { SapBusinessOneServiceLayer } from '../nodes/SapBusinessOneServiceLayer/
 import {
 	EDMX_BOUND_OPERATIONS,
 	EDMX_SERVICE_OPERATIONS,
+	EDMX_STRUCTURED_PROPERTIES,
 	SYNTHETIC_EDMX_V4,
 } from './fixtures/metadataDocuments';
 import { createTestCredentials } from './helpers/credentials';
@@ -235,6 +236,200 @@ describe('Entity Set error handling', () => {
 		expect(output[0]).toHaveLength(1);
 		expect(output[0][0].pairedItem).toEqual({ item: 0 });
 		expect(String(output[0][0].json.error)).toContain('Key field DocEntry has no value');
+	});
+});
+
+describe('Entity Set: complex and collection fields', () => {
+	const STRUCTURED_METADATA: RouteTable = {
+		'GET /$metadata': { statusCode: 200, body: EDMX_STRUCTURED_PROPERTIES },
+	};
+
+	it('sends lines and a complex property entered as JSON text as nested JSON', async () => {
+		const test = harness({
+			routes: {
+				...STRUCTURED_METADATA,
+				'POST /Orders': { statusCode: 201, body: { DocEntry: 9 } },
+			},
+			parameters: entitySetParams('create', {
+				entityFields: mapperValue({
+					CardCode: 'C1',
+					DocumentStatus: 'bost_Open',
+					AddressExtension: '{"ShipToStreet": "Main 1"}',
+					DocumentLines: '[{"ItemCode": "A1", "Quantity": 2}]',
+				}),
+			}),
+		});
+
+		const output = await test.run();
+
+		expect(test.http.callsFor('POST /Orders')[0].body).toEqual({
+			CardCode: 'C1',
+			DocumentStatus: 'bost_Open',
+			AddressExtension: { ShipToStreet: 'Main 1' },
+			DocumentLines: [{ ItemCode: 'A1', Quantity: 2 }],
+		});
+		expect(output[0][0].json).toEqual({ DocEntry: 9 });
+	});
+
+	it('uses structured values from an expression as-is', async () => {
+		const test = harness({
+			routes: { ...STRUCTURED_METADATA, 'POST /Orders': { statusCode: 201, body: {} } },
+			parameters: entitySetParams('create', {
+				entityFields: mapperValue({
+					AddressExtension: { ShipToStreet: 'Main 1' },
+					DocumentLines: [{ ItemCode: 'A1' }],
+				}),
+			}),
+		});
+
+		await test.run();
+
+		expect(test.http.callsFor('POST /Orders')[0].body).toEqual({
+			AddressExtension: { ShipToStreet: 'Main 1' },
+			DocumentLines: [{ ItemCode: 'A1' }],
+		});
+	});
+
+	it('patches lines and reports the parsed body it sent', async () => {
+		const test = harness({
+			routes: { ...STRUCTURED_METADATA, 'PATCH /Orders(45)': { statusCode: 204, body: '' } },
+			parameters: entitySetParams('update', {
+				keyFields: mapperValue({ DocEntry: 45 }),
+				entityFields: mapperValue({
+					CardCode: 'C2',
+					DocumentLines: '[{"LineNum": 0, "Quantity": 5}]',
+				}),
+			}),
+		});
+
+		const output = await test.run();
+
+		expect(test.http.callsFor('PATCH /Orders(45)')[0].body).toEqual({
+			CardCode: 'C2',
+			DocumentLines: [{ LineNum: 0, Quantity: 5 }],
+		});
+		expect(output[0][0].json).toEqual({
+			success: true,
+			entitySet: 'Orders',
+			key: { DocEntry: 45 },
+			CardCode: 'C2',
+			DocumentLines: [{ LineNum: 0, Quantity: 5 }],
+		});
+	});
+
+	it('leaves out a structured field that is empty at runtime, but sends an empty primitive', async () => {
+		// The editor never stores an empty field; only an expression yields one.
+		// An empty primitive is still sent, so a PATCH can clear a value.
+		const test = harness({
+			routes: { ...STRUCTURED_METADATA, 'PATCH /Orders(45)': { statusCode: 204, body: '' } },
+			parameters: entitySetParams('update', {
+				keyFields: mapperValue({ DocEntry: 45 }),
+				entityFields: mapperValue({ CardCode: '', AddressExtension: '', DocumentLines: null }),
+			}),
+		});
+
+		await test.run();
+
+		expect(test.http.callsFor('PATCH /Orders(45)')[0].body).toEqual({ CardCode: '' });
+	});
+
+	it('sends an empty array, which is a value and not an empty field', async () => {
+		const test = harness({
+			routes: { ...STRUCTURED_METADATA, 'PATCH /Orders(45)': { statusCode: 204, body: '' } },
+			parameters: entitySetParams('update', {
+				keyFields: mapperValue({ DocEntry: 45 }),
+				entityFields: mapperValue({ DocumentLines: '[]' }),
+			}),
+		});
+
+		await test.run();
+
+		expect(test.http.callsFor('PATCH /Orders(45)')[0].body).toEqual({ DocumentLines: [] });
+	});
+
+	it('passes a value for a property the metadata no longer declares through unchanged', async () => {
+		const test = harness({
+			routes: { ...STRUCTURED_METADATA, 'POST /Orders': { statusCode: 201, body: {} } },
+			parameters: entitySetParams('create', {
+				entityFields: mapperValue({ Stale: '[not json' }),
+			}),
+		});
+
+		await test.run();
+
+		expect(test.http.callsFor('POST /Orders')[0].body).toEqual({ Stale: '[not json' });
+	});
+
+	it('rejects invalid JSON before sending a request', async () => {
+		const test = harness({
+			routes: STRUCTURED_METADATA,
+			parameters: entitySetParams('create', {
+				entityFields: mapperValue({ DocumentLines: '[{"ItemCode": "A1",}]' }),
+			}),
+		});
+
+		const error = await test.run().catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(NodeOperationError);
+		expect(flattenErrorText(error)).toContain(
+			'The value of field "DocumentLines" is not valid JSON',
+		);
+		expect(flattenErrorText(error)).toContain('Collection(SAPB1.DocumentLine)');
+		expect(test.http.countFor('POST /Orders')).toBe(0);
+	});
+
+	it('rejects a JSON object where the property is a collection', async () => {
+		const test = harness({
+			routes: STRUCTURED_METADATA,
+			parameters: entitySetParams('update', {
+				keyFields: mapperValue({ DocEntry: 45 }),
+				entityFields: mapperValue({ DocumentLines: '{"ItemCode": "A1"}' }),
+			}),
+		});
+
+		const error = await test.run().catch((caught: unknown) => caught);
+
+		expect(flattenErrorText(error)).toContain(
+			'The value of field "DocumentLines" must be a JSON array',
+		);
+		expect(test.http.countFor('PATCH /Orders(45)')).toBe(0);
+	});
+
+	it('rejects a JSON array where the property is a single complex type', async () => {
+		const test = harness({
+			routes: STRUCTURED_METADATA,
+			parameters: entitySetParams('create', {
+				entityFields: mapperValue({ AddressExtension: '[]' }),
+			}),
+		});
+
+		const error = await test.run().catch((caught: unknown) => caught);
+
+		expect(flattenErrorText(error)).toContain(
+			'The value of field "AddressExtension" must be a JSON object',
+		);
+	});
+
+	it('collects the error on the item when continueOnFail is set and carries on', async () => {
+		const test = harness({
+			routes: {
+				...STRUCTURED_METADATA,
+				'POST /Orders': { statusCode: 201, body: { DocEntry: 9 } },
+			},
+			parameters: entitySetParams('create', {
+				entityFields: (itemIndex: number) =>
+					mapperValue({ DocumentLines: itemIndex === 0 ? 'nope' : '[]' }),
+			}),
+			items: [{ json: {} }, { json: {} }],
+			continueOnFail: true,
+		});
+
+		const output = await test.run();
+
+		expect(output[0]).toHaveLength(2);
+		expect(output[0][0].pairedItem).toEqual({ item: 0 });
+		expect(String(output[0][0].json.error)).toContain('is not valid JSON');
+		expect(output[0][1].json).toEqual({ DocEntry: 9 });
 	});
 });
 

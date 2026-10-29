@@ -1,5 +1,5 @@
 import type { FunctionsBase, IDataObject } from 'n8n-workflow';
-import { NodeOperationError, jsonParse } from 'n8n-workflow';
+import { NodeOperationError } from 'n8n-workflow';
 
 import { getServiceLayerCredentials } from './credentials';
 import { toCustomApiCallOutput } from './customApiCall';
@@ -7,6 +7,7 @@ import { buildEntityKeySegment } from './entityPath';
 import { getServiceLayerMetadata } from './metadata';
 import { encodeODataLiteral } from './odataLiteral';
 import { serviceLayerApiRequest } from './request';
+import { isUnset, parseStructuredValue } from './structuredValue';
 import type {
 	BoundOperationDefinition,
 	EntityDefinition,
@@ -41,58 +42,6 @@ export function getOperationParameterShape(edmType: string): OperationParameterS
 	return 'object';
 }
 
-/** True when a mapper field was left empty — `0` and `false` are legitimate values. */
-function isUnset(value: unknown): boolean {
-	return value === undefined || value === null || value === '';
-}
-
-/** Sentinel returned by `jsonParse` on failure, so no catch-and-rethrow is needed. */
-const INVALID_JSON = Object.freeze({});
-
-/**
- * Resolves a structured parameter's value. The resource mapper delivers the
- * JSON editor's text unparsed; an expression may already yield an object or
- * array, which is used as-is.
- */
-function parseStructuredValue(
-	context: NodeContext,
-	parameter: OperationParameter,
-	shape: 'object' | 'array',
-	raw: unknown,
-): unknown {
-	const expected = shape === 'array' ? 'a JSON array' : 'a JSON object';
-	let value = raw;
-
-	if (typeof raw === 'string') {
-		value = jsonParse<unknown>(raw, { fallbackValue: INVALID_JSON });
-
-		if (value === INVALID_JSON) {
-			throw new NodeOperationError(
-				context.getNode(),
-				`The value of parameter "${parameter.name}" is not valid JSON`,
-				{
-					description: `"${parameter.name}" (${parameter.edmType}) expects ${expected}. Check it for syntax errors such as missing quotes or trailing commas.`,
-				},
-			);
-		}
-	}
-
-	const matchesShape =
-		shape === 'array'
-			? Array.isArray(value)
-			: typeof value === 'object' && value !== null && !Array.isArray(value);
-
-	if (!matchesShape) {
-		throw new NodeOperationError(
-			context.getNode(),
-			`The value of parameter "${parameter.name}" must be ${expected}`,
-			{ description: `"${parameter.name}" has the type ${parameter.edmType}.` },
-		);
-	}
-
-	return value;
-}
-
 /**
  * Collects the values to send, in metadata order. Only parameters the
  * operation declares are read, so a stale mapper entry left behind by a
@@ -118,7 +67,15 @@ export function resolveOperationParameterValues(
 
 		resolved.push({
 			parameter,
-			value: shape === 'primitive' ? raw : parseStructuredValue(context, parameter, shape, raw),
+			value:
+				shape === 'primitive'
+					? raw
+					: parseStructuredValue(
+							context,
+							{ kind: 'parameter', name: parameter.name, edmType: parameter.edmType },
+							shape,
+							raw,
+						),
 		});
 	}
 
