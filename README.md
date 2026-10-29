@@ -127,7 +127,7 @@ Tests live in `test/` rather than beside the source, so they are never compiled 
 
 Coverage output is intentionally limited to a terminal text summary plus `coverage/lcov.info` (no HTML report): `n8n-node build` copies every `**/*.{png,svg}` outside `dist/` and `node_modules/` into the build output, and the HTML reporter emits PNG assets that would then be published.
 
-Covered today: OData literal encoding, simple and composite entity keys, metadata parsing, session reuse and invalidation, concurrent login de-duplication, expired-session retry, Entity Set CRUD request construction, and Custom API Call endpoint validation, body parsing, and request construction. Live Service Layer integration tests and end-to-end n8n workflow tests are out of scope; verification against a real instance remains manual.
+Covered today: OData literal encoding, simple and composite entity keys, metadata parsing, session reuse and invalidation, concurrent login de-duplication, expired-session retry, Entity Set CRUD request construction, Service Operation discovery, parameter handling, and request construction, and Custom API Call endpoint validation, body parsing, and request construction. Live Service Layer integration tests and end-to-end n8n workflow tests are out of scope; verification against a real instance remains manual.
 
 ### Writing tests
 
@@ -154,11 +154,11 @@ The node exposes a **Resource** selector with three values: **Entity Set**, **Se
 
 **Custom API Call** sends a request to any Service Layer endpoint you enter yourself, reusing the credential and session handling described below. See [Custom API Call](#custom-api-call).
 
-**Service Operation** is scaffolding for a later release and has no fields or behaviour yet.
+**Service Operation** calls an unbound Service Layer Action or Function (for example `CompanyService_GetCompanyInfo`) picked from the connected instance's metadata. See [Service Operation](#service-operation).
 
 The following are planned for later releases:
 
-- Guided bound and unbound Service Layer actions and functions (e.g. `Orders(1)/Close`, `CompanyService_GetCompanyInfo`); until then they can be called through **Custom API Call**
+- Guided bound Service Layer actions and functions (e.g. `Orders(1)/Close`); until then they can be called through **Custom API Call**
 - `$select`, `$filter`, `$orderby`, and `$expand` query options for Get/Get Many
 - Structured SAP Business One error handling
 - Webhook and event integration
@@ -170,6 +170,24 @@ These are planned and not yet available in the current development version.
 - **Key Fields** (Get, Update, Delete) — identifies the entity, one input per key property, populated from the connected instance's metadata and labelled with the property's own name (for example a single `ItemCode` field for `Items`, or `ItemCode`/`CardCode`/`Substitute` for the three-part composite key of `AlternateCatNum`) — no need to know or type a key's name from memory. Every key field is required; leaving one unset is rejected before any request is sent.
 - **Fields** (Create, Update) — a metadata-driven field mapper: pick which of the entity type's properties to send, sourced from the connected instance's metadata. Collection/navigation properties (for example `Orders.DocumentLines`) are not offered here and cannot be set through Create/Update yet — entities whose meaningful data lives in a line-item collection can only have their header fields set. For Create, the entity's key properties are also offered, since some entity sets require a user-supplied key (`CardCode`) while others assign one automatically (`DocEntry`); for Update, key properties are omitted, since the key is already given via **Key Fields** and the Service Layer does not support changing it through an update.
 - **Get Many** pagination — the Service Layer defaults to 20 rows per page regardless of how many match. `Get Many` requests the page size it actually needs (`Limit`, or unlimited for `Return All`) via the `Prefer: odata.maxpagesize` request header, which normally returns everything in a single request; the server's own pagination (`@odata.nextLink`) is still followed as a fallback if a very large result is nonetheless split across pages.
+
+### Service Operation
+
+Calls an unbound Action or Function from the connected instance's metadata, without building the URL or request body yourself. Requests go through the same authenticated request layer as the other resources.
+
+- **Service Operation** — a metadata-driven list of every unbound Action and Function. The label shows the kind, for example `CompanyService_GetCompanyInfo (Function)` or `QueryService_PostQuery (Action)`; the node picks the HTTP method from it.
+- **Parameters** — a metadata-driven field mapper listing the selected operation's parameters:
+  - simple parameters (`Edm.*`) get a field of the matching type
+  - complex parameters (for example `SAPB1.Document`) get a JSON object field
+  - collection parameters (`Collection(...)`) get a JSON array field
+
+  Every parameter is optional, because the Service Layer metadata marks none of them as required; a missing value is reported by the Service Layer itself. Fields left empty are not sent. Invalid JSON, or JSON of the wrong shape, fails with a clear error before any request is sent. An expression that resolves to an object or array is used as-is.
+
+Actions are sent as `POST /<Action>` with the parameters as a JSON body, or no body when there are none. Functions are sent as `GET /<Function>(Name=value,...)`, with every value written as an OData literal of its declared type (strings quoted and escaped, numbers unquoted); a function without values is called as `/<Function>()`. A function parameter of a complex type cannot be written into the URL and is rejected; no function in the Service Layer metadata declares one.
+
+The output follows the Custom API Call convention below: one output item per input item, object responses unchanged and collections not split, `{ "success": true, "statusCode": 204 }` for an empty response, and any other response under `data`.
+
+Entering complex parameters as individual fields instead of JSON is planned for a later release.
 
 ### Custom API Call
 

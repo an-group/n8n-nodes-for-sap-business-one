@@ -183,3 +183,68 @@ export const EDMX_FIELD_TYPES = `<?xml version="1.0" encoding="UTF-8"?>
   </edmx:DataServices>
 </edmx:Edmx>
 `;
+
+/**
+ * Unbound Actions and Functions covering every parameter shape the Service
+ * Operation resource handles: none, simple (`Edm.*`), complex, and collection.
+ * Kept separate from `SYNTHETIC_EDMX_V4` so the parser tests that pin that
+ * document's operation count stay untouched. Declared in non-alphabetical
+ * order, so a sorted dropdown can only come from the sort.
+ */
+export const EDMX_SERVICE_OPERATIONS = `<?xml version="1.0" encoding="UTF-8"?>
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
+  <edmx:DataServices>
+    <Schema Namespace="SAPB1" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+
+      <Function Name="SBOBobService_GetDueDate">
+        <Parameter Name="CardCode" Type="Edm.String"/>
+        <Parameter Name="RefDate" Type="Edm.String"/>
+        <ReturnType Type="Edm.String"/>
+      </Function>
+
+      <Function Name="CompanyService_GetCompanyInfo">
+        <ReturnType Type="SAPB1.CompanyInfo"/>
+      </Function>
+
+      <Function Name="RateService_GetRate">
+        <Parameter Name="Factor" Type="Edm.Double"/>
+        <ReturnType Type="Edm.Double"/>
+      </Function>
+
+      <Function Name="ReportService_GetReport">
+        <Parameter Name="ReportParams" Type="SAPB1.ReportParams"/>
+        <ReturnType Type="SAPB1.Report"/>
+      </Function>
+
+      <Action Name="SBOBobService_SetSystemPermission">
+        <Parameter Name="UserCode" Type="Edm.String"/>
+        <Parameter Name="PermissionID" Type="Edm.String"/>
+        <Parameter Name="Permission" Type="Edm.Int32"/>
+      </Action>
+
+      <Action Name="BankStatementsService_GetBankStatementList">
+        <Parameter Name="BankStatementParams" Type="SAPB1.BankStatementParams"/>
+        <ReturnType Type="Collection(SAPB1.BankStatementParams)"/>
+      </Action>
+
+      <Action Name="BatchService_PostLines">
+        <Parameter Name="Lines" Type="Collection(SAPB1.BatchLine)"/>
+      </Action>
+
+      <Action Name="CleanupService_Run"/>
+
+      <EntityContainer Name="SAPB1">
+        <FunctionImport Function="SAPB1.SBOBobService_GetDueDate" Name="SBOBobService_GetDueDate"/>
+        <FunctionImport Function="SAPB1.CompanyService_GetCompanyInfo" Name="CompanyService_GetCompanyInfo"/>
+        <FunctionImport Function="SAPB1.RateService_GetRate" Name="RateService_GetRate"/>
+        <FunctionImport Function="SAPB1.ReportService_GetReport" Name="ReportService_GetReport"/>
+        <ActionImport Action="SAPB1.SBOBobService_SetSystemPermission" Name="SBOBobService_SetSystemPermission"/>
+        <ActionImport Action="SAPB1.BankStatementsService_GetBankStatementList" Name="BankStatementsService_GetBankStatementList"/>
+        <ActionImport Action="SAPB1.BatchService_PostLines" Name="BatchService_PostLines"/>
+        <ActionImport Action="SAPB1.CleanupService_Run" Name="CleanupService_Run"/>
+      </EntityContainer>
+
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>
+`;

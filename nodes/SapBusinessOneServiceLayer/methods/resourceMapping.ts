@@ -2,7 +2,8 @@ import type { ILoadOptionsFunctions, ResourceMapperField, ResourceMapperFields }
 
 import { loadServiceLayerMetadata } from '../helpers/credentials';
 import { classifyEdmType } from '../helpers/odataLiteral';
-import type { EntityDefinition } from '../helpers/types';
+import { getOperationParameterShape } from '../helpers/serviceOperation';
+import type { EntityDefinition, OperationParameter } from '../helpers/types';
 
 function mapEdmTypeToFieldType(edmType: string): ResourceMapperField['type'] {
 	const literalKind = classifyEdmType(edmType);
@@ -114,4 +115,64 @@ export async function getEntityKeys(this: ILoadOptionsFunctions): Promise<Resour
 	}));
 
 	return { fields };
+}
+
+/**
+ * One mapper field per operation parameter. Simple parameters get a field of
+ * the matching type; complex and collection parameters get a JSON editor
+ * (`object`/`array`).
+ *
+ * No field is marked `required`: the Service Layer's metadata marks no
+ * Action or Function parameter as non-nullable, so required-ness cannot be
+ * derived, and a missing value is reported by the Service Layer itself.
+ */
+function getOperationParameterFields(parameters: OperationParameter[]): ResourceMapperField[] {
+	return parameters.map((parameter) => {
+		const shape = getOperationParameterShape(parameter.edmType);
+
+		return {
+			id: parameter.name,
+			displayName: parameter.name,
+			type: shape === 'primitive' ? mapEdmTypeToFieldType(parameter.edmType) : shape,
+			required: false,
+			defaultMatch: false,
+			canBeUsedToMatch: false,
+			display: true,
+		};
+	});
+}
+
+/**
+ * Populates the Service Operation `Parameters` resource-mapper field list from
+ * the selected unbound Action's or Function's metadata.
+ */
+export async function getServiceOperationParameters(
+	this: ILoadOptionsFunctions,
+): Promise<ResourceMapperFields> {
+	const operationName = this.getNodeParameter('serviceOperation') as string;
+
+	if (!operationName) {
+		return { fields: [] };
+	}
+
+	const metadata = await loadServiceLayerMetadata.call(this);
+	const operation = metadata.unboundOperations.find(
+		(candidate) => candidate.name === operationName,
+	);
+
+	if (operation === undefined) {
+		return {
+			fields: [],
+			emptyFieldsNotice: `Unknown service operation "${operationName}".`,
+		};
+	}
+
+	if (operation.parameters.length === 0) {
+		return {
+			fields: [],
+			emptyFieldsNotice: `"${operation.name}" takes no parameters.`,
+		};
+	}
+
+	return { fields: getOperationParameterFields(operation.parameters) };
 }

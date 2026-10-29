@@ -3,7 +3,7 @@ import type { INodeExecutionData } from 'n8n-workflow';
 import { describe, expect, it } from 'vitest';
 
 import { SapBusinessOneServiceLayer } from '../nodes/SapBusinessOneServiceLayer/SapBusinessOneServiceLayer.node';
-import { SYNTHETIC_EDMX_V4 } from './fixtures/metadataDocuments';
+import { EDMX_SERVICE_OPERATIONS, SYNTHETIC_EDMX_V4 } from './fixtures/metadataDocuments';
 import { createTestCredentials } from './helpers/credentials';
 import { flattenErrorText } from './helpers/errors';
 import { createHttpFake, type FakeResponse, type RouteTable } from './helpers/http';
@@ -192,12 +192,13 @@ describe('Entity Set error handling', () => {
 		expect(flattenErrorText(error)).toContain('Unknown entity set "Nope"');
 	});
 
-	it('rejects a resource that has no operations yet', async () => {
-		const test = harness({ parameters: { resource: 'serviceOperation' } });
+	it('rejects an unknown resource', async () => {
+		const test = harness({ parameters: { resource: 'frobnicate' } });
 
 		const error = await test.run().catch((caught: unknown) => caught);
 
-		expect(flattenErrorText(error)).toContain('no operations implemented yet');
+		expect(error).toBeInstanceOf(NodeOperationError);
+		expect(flattenErrorText(error)).toContain('Unknown resource "frobnicate"');
 	});
 
 	it('rejects an unknown operation', async () => {
@@ -480,5 +481,268 @@ describe('Node output hygiene', () => {
 		expect(serialized).not.toContain(test.credentials.password);
 		expect(serialized).not.toContain('B1SESSION');
 		expect(serialized).not.toContain('sess-1');
+	});
+});
+
+const SERVICE_OPERATION_METADATA: RouteTable = {
+	'GET /$metadata': { statusCode: 200, body: EDMX_SERVICE_OPERATIONS },
+};
+
+function serviceOperationParams(
+	serviceOperation: string,
+	values: Record<string, unknown> | null = null,
+): Record<string, ParameterValue> {
+	return {
+		resource: 'serviceOperation',
+		serviceOperation,
+		operationParameters: mapperValue(values),
+	};
+}
+
+describe('Service Operation', () => {
+	it('calls a function without parameters with empty parentheses', async () => {
+		const test = harness({
+			routes: {
+				...SERVICE_OPERATION_METADATA,
+				'GET /CompanyService_GetCompanyInfo()': {
+					statusCode: 200,
+					body: { CompanyName: 'Demo' },
+				},
+			},
+			parameters: serviceOperationParams('CompanyService_GetCompanyInfo'),
+		});
+
+		const output = await test.run();
+
+		const [request] = test.http.callsFor('GET /CompanyService_GetCompanyInfo()');
+		expect(request.body).toBeUndefined();
+		expect(output).toEqual([[{ json: { CompanyName: 'Demo' }, pairedItem: { item: 0 } }]]);
+	});
+
+	it('encodes function parameters inline as OData literals, in metadata order', async () => {
+		const path = "GET /SBOBobService_GetDueDate(CardCode='O''Brien%20%231',RefDate='20260101')";
+		const test = harness({
+			routes: { ...SERVICE_OPERATION_METADATA, [path]: { statusCode: 200, body: '20260131' } },
+			parameters: serviceOperationParams('SBOBobService_GetDueDate', {
+				RefDate: '20260101',
+				CardCode: "O'Brien #1",
+			}),
+		});
+
+		const output = await test.run();
+
+		expect(test.http.countFor(path)).toBe(1);
+		// A plain-text response is wrapped, exactly as a Custom API Call does.
+		expect(output[0][0].json).toEqual({ data: '20260131' });
+	});
+
+	it('writes numeric function parameters unquoted', async () => {
+		const path = 'GET /RateService_GetRate(Factor=1.5)';
+		const test = harness({
+			routes: { ...SERVICE_OPERATION_METADATA, [path]: { statusCode: 200, body: { value: 3 } } },
+			parameters: serviceOperationParams('RateService_GetRate', { Factor: 1.5 }),
+		});
+
+		await test.run();
+
+		expect(test.http.countFor(path)).toBe(1);
+	});
+
+	it('leaves empty fields and undeclared parameters out of a function call', async () => {
+		const path = "GET /SBOBobService_GetDueDate(CardCode='C1')";
+		const test = harness({
+			routes: { ...SERVICE_OPERATION_METADATA, [path]: { statusCode: 200, body: 'x' } },
+			parameters: serviceOperationParams('SBOBobService_GetDueDate', {
+				CardCode: 'C1',
+				RefDate: '',
+				Stale: 'left over from another operation',
+			}),
+		});
+
+		await test.run();
+
+		expect(test.http.countFor(path)).toBe(1);
+	});
+
+	it('rejects a complex function parameter instead of sending it in the URL', async () => {
+		const test = harness({
+			routes: SERVICE_OPERATION_METADATA,
+			parameters: serviceOperationParams('ReportService_GetReport', {
+				ReportParams: '{"Code":"R1"}',
+			}),
+		});
+
+		const error = await test.run().catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(NodeOperationError);
+		expect(flattenErrorText(error)).toContain('cannot be sent in the URL');
+		expect(test.http.calls.filter((call) => call.url?.startsWith('/ReportService'))).toEqual([]);
+	});
+
+	it('posts action parameters as a JSON body', async () => {
+		const test = harness({
+			routes: {
+				...SERVICE_OPERATION_METADATA,
+				'POST /SBOBobService_SetSystemPermission': { statusCode: 204, body: '' },
+			},
+			parameters: serviceOperationParams('SBOBobService_SetSystemPermission', {
+				UserCode: 'manager',
+				PermissionID: '',
+				Permission: 0,
+			}),
+		});
+
+		const output = await test.run();
+
+		expect(test.http.callsFor('POST /SBOBobService_SetSystemPermission')[0].body).toEqual({
+			UserCode: 'manager',
+			Permission: 0,
+		});
+		expect(output[0][0].json).toEqual({ success: true, statusCode: 204 });
+	});
+
+	it('parses a complex parameter entered as JSON text', async () => {
+		const test = harness({
+			routes: {
+				...SERVICE_OPERATION_METADATA,
+				'POST /BankStatementsService_GetBankStatementList': {
+					statusCode: 200,
+					body: { value: [{ Sequence: 1 }] },
+				},
+			},
+			parameters: serviceOperationParams('BankStatementsService_GetBankStatementList', {
+				BankStatementParams: '{"BankAccountKey": 3}',
+			}),
+		});
+
+		const output = await test.run();
+
+		expect(test.http.callsFor('POST /BankStatementsService_GetBankStatementList')[0].body).toEqual({
+			BankStatementParams: { BankAccountKey: 3 },
+		});
+		// Collections are returned unsplit, like a Custom API Call.
+		expect(output[0]).toHaveLength(1);
+		expect(output[0][0].json).toEqual({ value: [{ Sequence: 1 }] });
+	});
+
+	it('uses structured values from an expression as-is', async () => {
+		const test = harness({
+			routes: {
+				...SERVICE_OPERATION_METADATA,
+				'POST /BatchService_PostLines': { statusCode: 204, body: '' },
+			},
+			parameters: serviceOperationParams('BatchService_PostLines', {
+				Lines: [{ LineNum: 0 }, { LineNum: 1 }],
+			}),
+		});
+
+		await test.run();
+
+		expect(test.http.callsFor('POST /BatchService_PostLines')[0].body).toEqual({
+			Lines: [{ LineNum: 0 }, { LineNum: 1 }],
+		});
+	});
+
+	it('posts an action without parameters without a body', async () => {
+		const test = harness({
+			routes: {
+				...SERVICE_OPERATION_METADATA,
+				'POST /CleanupService_Run': { statusCode: 204, body: '' },
+			},
+			parameters: serviceOperationParams('CleanupService_Run'),
+		});
+
+		await test.run();
+
+		expect(test.http.callsFor('POST /CleanupService_Run')[0].body).toBeUndefined();
+	});
+
+	it.each([
+		[
+			'invalid JSON',
+			'BankStatementsService_GetBankStatementList',
+			'BankStatementParams',
+			'{nope',
+			'is not valid JSON',
+		],
+		[
+			'an array for an object',
+			'BankStatementsService_GetBankStatementList',
+			'BankStatementParams',
+			'[1]',
+			'must be a JSON object',
+		],
+		[
+			'an object for an array',
+			'BatchService_PostLines',
+			'Lines',
+			'{"LineNum":0}',
+			'must be a JSON array',
+		],
+		[
+			'a scalar for an object',
+			'BankStatementsService_GetBankStatementList',
+			'BankStatementParams',
+			'42',
+			'must be a JSON object',
+		],
+	])(
+		'rejects %s before sending the request',
+		async (_case, operation, parameter, value, message) => {
+			const test = harness({
+				routes: SERVICE_OPERATION_METADATA,
+				parameters: serviceOperationParams(operation, { [parameter]: value }),
+			});
+
+			const error = await test.run().catch((caught: unknown) => caught);
+
+			expect(error).toBeInstanceOf(NodeOperationError);
+			expect(flattenErrorText(error)).toContain(`parameter "${parameter}" ${message}`);
+			expect(test.http.countFor(`POST /${operation}`)).toBe(0);
+		},
+	);
+
+	it('rejects an operation the metadata does not describe', async () => {
+		const test = harness({
+			routes: SERVICE_OPERATION_METADATA,
+			parameters: serviceOperationParams('NoSuchService_Run'),
+		});
+
+		const error = await test.run().catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(NodeOperationError);
+		expect(flattenErrorText(error)).toContain('Unknown service operation "NoSuchService_Run"');
+	});
+
+	it('surfaces a Service Layer error as a node API error', async () => {
+		const test = harness({
+			routes: {
+				...SERVICE_OPERATION_METADATA,
+				'POST /CleanupService_Run': {
+					statusCode: 400,
+					body: { error: { code: -5002, message: { value: 'Operation failed' } } },
+				},
+			},
+			parameters: serviceOperationParams('CleanupService_Run'),
+		});
+
+		const error = await test.run().catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(NodeApiError);
+		expect(flattenErrorText(error)).toContain('Operation failed');
+	});
+
+	it('collects the error on the item when continueOnFail is set', async () => {
+		const test = harness({
+			routes: SERVICE_OPERATION_METADATA,
+			parameters: serviceOperationParams('BatchService_PostLines', { Lines: '{nope' }),
+			continueOnFail: true,
+		});
+
+		const output = await test.run();
+
+		expect(output[0]).toHaveLength(1);
+		expect(output[0][0].pairedItem).toEqual({ item: 0 });
+		expect(String(output[0][0].json.error)).toContain('is not valid JSON');
 	});
 });

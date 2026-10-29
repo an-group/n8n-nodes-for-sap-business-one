@@ -6,10 +6,12 @@ import { getEntitySets } from '../nodes/SapBusinessOneServiceLayer/methods/loadO
 import {
 	getEntityFields,
 	getEntityKeys,
+	getServiceOperationParameters,
 } from '../nodes/SapBusinessOneServiceLayer/methods/resourceMapping';
 import {
 	EDMX_BROKEN_ENTITY_SET,
 	EDMX_FIELD_TYPES,
+	EDMX_SERVICE_OPERATIONS,
 	EDMX_V1,
 	SYNTHETIC_EDMX_V4,
 } from './fixtures/metadataDocuments';
@@ -275,5 +277,59 @@ describe('metadata reuse across the node methods', () => {
 		// change, so this cache is what keeps the editor off the Service Layer.
 		expect(http.countFor('POST /Login')).toBe(1);
 		expect(http.countFor('GET /$metadata')).toBe(1);
+	});
+});
+
+async function parametersFor(serviceOperation: string | undefined) {
+	const { context } = scenario({
+		parameters: { serviceOperation },
+		metadataXml: EDMX_SERVICE_OPERATIONS,
+	});
+
+	return await getServiceOperationParameters.call(context);
+}
+
+describe('getServiceOperationParameters', () => {
+	it('maps simple parameters to optional fields of the matching type, in declaration order', async () => {
+		await expect(parametersFor('SBOBobService_SetSystemPermission')).resolves.toEqual({
+			fields: [
+				bodyField('UserCode', 'string'),
+				bodyField('PermissionID', 'string'),
+				bodyField('Permission', 'number'),
+			],
+		});
+	});
+
+	it('maps a complex parameter to an object field', async () => {
+		await expect(parametersFor('BankStatementsService_GetBankStatementList')).resolves.toEqual({
+			fields: [bodyField('BankStatementParams', 'object')],
+		});
+	});
+
+	it('maps a collection parameter to an array field', async () => {
+		await expect(parametersFor('BatchService_PostLines')).resolves.toEqual({
+			fields: [bodyField('Lines', 'array')],
+		});
+	});
+
+	it('explains itself when the operation takes no parameters', async () => {
+		await expect(parametersFor('CleanupService_Run')).resolves.toEqual({
+			fields: [],
+			emptyFieldsNotice: '"CleanupService_Run" takes no parameters.',
+		});
+	});
+
+	it('explains itself when the operation is not in the metadata', async () => {
+		await expect(parametersFor('NoSuchService_Run')).resolves.toEqual({
+			fields: [],
+			emptyFieldsNotice: 'Unknown service operation "NoSuchService_Run".',
+		});
+	});
+
+	it('stays empty, and fetches nothing, while no operation is selected', async () => {
+		const { context, http } = scenario({ parameters: { serviceOperation: '' } });
+
+		await expect(getServiceOperationParameters.call(context)).resolves.toEqual({ fields: [] });
+		expect(http.calls).toHaveLength(0);
 	});
 });
