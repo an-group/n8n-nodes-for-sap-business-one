@@ -272,6 +272,27 @@ describe('Entity Set: complex and collection fields', () => {
 		expect(output[0][0].json).toEqual({ DocEntry: 9 });
 	});
 
+	// The Service Layer accepts all three (verified live, #37): it stores
+	// `08:30:00` for the first two and only the time of the saved timestamp.
+	it.each(['08:30', '08:30:00', '2026-10-30T09:15:00'])(
+		'sends the time of day %j unchanged',
+		async (docTime) => {
+			const test = harness({
+				routes: { ...STRUCTURED_METADATA, 'POST /Orders': { statusCode: 201, body: {} } },
+				parameters: entitySetParams('create', {
+					entityFields: mapperValue({ CardCode: 'C1', DocTime: docTime }),
+				}),
+			});
+
+			await test.run();
+
+			expect(test.http.callsFor('POST /Orders')[0].body).toEqual({
+				CardCode: 'C1',
+				DocTime: docTime,
+			});
+		},
+	);
+
 	it('uses structured values from an expression as-is', async () => {
 		const test = harness({
 			routes: { ...STRUCTURED_METADATA, 'POST /Orders': { statusCode: 201, body: {} } },

@@ -150,7 +150,8 @@ export const EDMX_EMPTY = `<?xml version="1.0" encoding="UTF-8"?>
  * `FieldTypes` declares one property per EDM kind the resource mapper has to
  * classify. `LineContainers` has no `<Key>` block and nothing but a
  * collection-valued property, which is the only way to reach an entity whose
- * mapper field list filters down to empty.
+ * mapper field list filters down to empty. `TimeSlots` is synthetic: no real
+ * key is `Edm.TimeOfDay`, but `Key Fields` must keep their own mapping.
  */
 export const EDMX_FIELD_TYPES = `<?xml version="1.0" encoding="UTF-8"?>
 <edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
@@ -168,15 +169,24 @@ export const EDMX_FIELD_TYPES = `<?xml version="1.0" encoding="UTF-8"?>
         <Property Name="Ref" Type="Edm.Guid"/>
         <Property Name="DueDate" Type="Edm.DateTimeOffset"/>
         <Property Name="Valid" Type="SAPB1.BoYesNoEnum"/>
+        <Property Name="StartTime" Type="Edm.TimeOfDay"/>
       </EntityType>
 
       <EntityType Name="LineContainer" OpenType="true">
         <Property Name="Lines" Type="Collection(SAPB1.DocumentLine)"/>
       </EntityType>
 
+      <EntityType Name="TimeSlot" OpenType="true">
+        <Key>
+          <PropertyRef Name="Slot"/>
+        </Key>
+        <Property Name="Slot" Nullable="false" Type="Edm.TimeOfDay"/>
+      </EntityType>
+
       <EntityContainer Name="SAPB1">
         <EntitySet EntityType="SAPB1.FieldType" Name="FieldTypes"/>
         <EntitySet EntityType="SAPB1.LineContainer" Name="LineContainers"/>
+        <EntitySet EntityType="SAPB1.TimeSlot" Name="TimeSlots"/>
       </EntityContainer>
 
     </Schema>
@@ -428,6 +438,7 @@ export const EDMX_STRUCTURED_PROPERTIES = `<?xml version="1.0" encoding="UTF-8"?
         <Property Name="DocEntry" Nullable="false" Type="Edm.Int32"/>
         <Property Name="CardCode" Type="Edm.String"/>
         <Property Name="DocumentStatus" Type="SAPB1.BoStatus"/>
+        <Property Name="DocTime" Type="Edm.TimeOfDay"/>
         <Property Name="AddressExtension" Type="SAPB1.AddressExtension"/>
         <Property Name="DocumentLines" Type="Collection(SAPB1.DocumentLine)"/>
         <Property Name="Approver" Type="SAPB1.Employee"/>
@@ -503,6 +514,7 @@ export const EDMX_EXPANDED_PARAMETERS = `<?xml version="1.0" encoding="UTF-8"?>
       <ComplexType Name="BankStatementParams">
         <Property Name="BankAccountKey" Type="Edm.Int32"/>
         <Property Name="StatementDate" Type="Edm.DateTimeOffset"/>
+        <Property Name="StatementTime" Type="Edm.TimeOfDay"/>
         <Property Name="Status" Type="SAPB1.BoStatus"/>
         <Property Name="Address" Type="SAPB1.AddressExtension"/>
         <Property Name="Lines" Type="Collection(SAPB1.StatementLine)"/>
@@ -555,6 +567,7 @@ export const EDMX_EXPANDED_PARAMETERS = `<?xml version="1.0" encoding="UTF-8"?>
       <Action Name="StatusService_SetStatus">
         <Parameter Name="Code" Type="Edm.String"/>
         <Parameter Name="Status" Type="SAPB1.BoStatus"/>
+        <Parameter Name="EffectiveAt" Type="Edm.TimeOfDay"/>
       </Action>
 
       <Function Name="ReportService_GetReport">

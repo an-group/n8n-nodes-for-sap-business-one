@@ -109,6 +109,17 @@ describe('getEntityKeys', () => {
 		await expect(keysFor('Orders')).resolves.toEqual({ fields: [keyField('DocEntry', 'number')] });
 	});
 
+	it('keeps the key mapping for a time-of-day key, unlike the body fields', async () => {
+		// Key Fields are out of scope for the time field (#37); no real key uses
+		// Edm.TimeOfDay. On create the same property is a body field.
+		await expect(keysFor('TimeSlots', EDMX_FIELD_TYPES)).resolves.toEqual({
+			fields: [keyField('Slot', 'dateTime')],
+		});
+		await expect(fieldsFor('TimeSlots', 'create', EDMX_FIELD_TYPES)).resolves.toEqual({
+			fields: [bodyField('Slot', 'time')],
+		});
+	});
+
 	it('maps a composite key in metadata declaration order', async () => {
 		// The entity type declares its properties Rate, Type, Code — so this
 		// order can only have come from the <Key> block.
@@ -178,6 +189,7 @@ describe('getEntityFields', () => {
 			fields: [
 				bodyField('CardCode', 'string'),
 				enumField('DocumentStatus', BO_STATUS_MEMBERS),
+				bodyField('DocTime', 'time'),
 				bodyField('AddressExtension', 'object'),
 				bodyField('DocumentLines', 'array'),
 				bodyField('Approver', 'object'),
@@ -256,6 +268,8 @@ describe('getEntityFields', () => {
 				// This document never declares BoYesNoEnum, so there are no members
 				// to offer.
 				bodyField('Valid', 'string'),
+				// A time of day gets n8n's time field, not the date picker.
+				bodyField('StartTime', 'time'),
 			],
 		});
 	});
@@ -404,6 +418,7 @@ describe('getServiceOperationParameters: a single complex or entity parameter', 
 	const BANK_STATEMENT_FIELDS = [
 		bodyField('BankAccountKey', 'number'),
 		bodyField('StatementDate', 'dateTime'),
+		bodyField('StatementTime', 'time'),
 		enumField('Status', BO_STATUS_MEMBERS),
 		bodyField('Address', 'object'),
 		bodyField('Lines', 'array'),
@@ -439,9 +454,13 @@ describe('getServiceOperationParameters: a single complex or entity parameter', 
 		});
 	});
 
-	it('maps an enum parameter to a dropdown', async () => {
+	it('maps an enum parameter to a dropdown and a time-of-day parameter to a time field', async () => {
 		await expect(expandedParametersFor('StatusService_SetStatus')).resolves.toEqual({
-			fields: [bodyField('Code', 'string'), enumField('Status', BO_STATUS_MEMBERS)],
+			fields: [
+				bodyField('Code', 'string'),
+				enumField('Status', BO_STATUS_MEMBERS),
+				bodyField('EffectiveAt', 'time'),
+			],
 		});
 	});
 
