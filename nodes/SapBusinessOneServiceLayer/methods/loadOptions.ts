@@ -1,6 +1,8 @@
 import type { ILoadOptionsFunctions, INodePropertyOptions } from 'n8n-workflow';
 
 import { loadServiceLayerMetadata } from '../helpers/credentials';
+import { classifyServiceLayerType } from '../helpers/typeClassification';
+import type { EntityDefinition, EntityPropertyDefinition } from '../helpers/types';
 
 /** Populates the Entity Set dropdown from the connected instance's metadata. */
 export async function getEntitySets(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
@@ -33,20 +35,76 @@ export async function getServiceOperations(
 export async function getBoundOperations(
 	this: ILoadOptionsFunctions,
 ): Promise<INodePropertyOptions[]> {
-	const entitySetName = this.getNodeParameter('entitySet') as string;
-
-	if (!entitySetName) {
-		return [];
-	}
-
-	const metadata = await loadServiceLayerMetadata.call(this);
-	const entity = metadata.entities.get(entitySetName);
+	const entity = await loadSelectedEntity.call(this);
 
 	if (entity === undefined) {
 		return [];
 	}
 
 	return toOperationOptions([...entity.boundActions, ...entity.boundFunctions]);
+}
+
+/**
+ * Populates the `Select Field Names or IDs` multi-select (`$select`) with every property of the
+ * selected entity set, collections and complex properties included: a live
+ * Service Layer accepts `$select=DocEntry,DocumentLines` and returns the lines
+ * in full.
+ */
+export async function getSelectableFields(
+	this: ILoadOptionsFunctions,
+): Promise<INodePropertyOptions[]> {
+	const entity = await loadSelectedEntity.call(this);
+
+	return toFieldOptions(entity?.properties ?? []);
+}
+
+/**
+ * Populates the `Sort` field dropdown (`$orderby`). Only single primitive and
+ * enum values can be ordered by; collections and complex properties are left
+ * out.
+ */
+export async function getSortableFields(
+	this: ILoadOptionsFunctions,
+): Promise<INodePropertyOptions[]> {
+	const entity = await loadSelectedEntity.call(this);
+
+	if (entity === undefined) {
+		return [];
+	}
+
+	const metadata = await loadServiceLayerMetadata.call(this);
+
+	return toFieldOptions(
+		entity.properties.filter((property) => {
+			const typeInfo = classifyServiceLayerType(property.edmType, metadata);
+
+			return (
+				!typeInfo.isCollection &&
+				(typeInfo.category === 'primitive' || typeInfo.category === 'enum')
+			);
+		}),
+	);
+}
+
+async function loadSelectedEntity(
+	this: ILoadOptionsFunctions,
+): Promise<EntityDefinition | undefined> {
+	const entitySetName = this.getNodeParameter('entitySet') as string;
+
+	if (!entitySetName) {
+		return undefined;
+	}
+
+	const metadata = await loadServiceLayerMetadata.call(this);
+
+	return metadata.entities.get(entitySetName);
+}
+
+function toFieldOptions(properties: EntityPropertyDefinition[]): INodePropertyOptions[] {
+	return properties
+		.map((property) => property.name)
+		.sort((a, b) => a.localeCompare(b))
+		.map((name) => ({ name, value: name }));
 }
 
 function toOperationOptions(

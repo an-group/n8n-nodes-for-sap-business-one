@@ -39,8 +39,15 @@ function scenario(routes: RouteTable, overrides: Parameters<typeof createTestCre
 		credentialId,
 		send: async (options: ServiceLayerRequestOptions) =>
 			await serviceLayerApiRequest.call(context, credentials, credentialId, options),
-		collect: async (entitySetName: string, limit: number | undefined) =>
-			await fetchEntityCollection.call(context, credentials, credentialId, entitySetName, limit),
+		collect: async (entitySetName: string, limit: number | undefined, queryString?: string) =>
+			await fetchEntityCollection.call(
+				context,
+				credentials,
+				credentialId,
+				entitySetName,
+				limit,
+				queryString,
+			),
 	};
 }
 
@@ -196,7 +203,10 @@ describe('serviceLayerApiRequest session recovery', () => {
 	it('treats a 401 with no parseable SAP code as an expired session', async () => {
 		const test = scenario({
 			'POST /Login': [LOGIN_OK, LOGIN_SECOND],
-			'GET /Orders': [{ statusCode: 401, body: {} }, { statusCode: 200, body: {} }],
+			'GET /Orders': [
+				{ statusCode: 401, body: {} },
+				{ statusCode: 200, body: {} },
+			],
 		});
 
 		await test.send({ url: '/Orders', method: 'GET' });
@@ -229,9 +239,7 @@ describe('serviceLayerApiRequest session recovery', () => {
 			'GET /Orders': [SESSION_EXPIRED, SESSION_EXPIRED, { statusCode: 200, body: {} }],
 		});
 
-		await expect(test.send({ url: '/Orders', method: 'GET' })).rejects.toBeInstanceOf(
-			NodeApiError,
-		);
+		await expect(test.send({ url: '/Orders', method: 'GET' })).rejects.toBeInstanceOf(NodeApiError);
 		expect(test.http.countFor('POST /Login')).toBe(2);
 
 		// The refused session was discarded rather than handed to the next caller.
@@ -245,9 +253,7 @@ describe('serviceLayerApiRequest session recovery', () => {
 			'GET /Orders': { statusCode, body: { error: { message: 'Boom' } } },
 		});
 
-		await expect(test.send({ url: '/Orders', method: 'GET' })).rejects.toBeInstanceOf(
-			NodeApiError,
-		);
+		await expect(test.send({ url: '/Orders', method: 'GET' })).rejects.toBeInstanceOf(NodeApiError);
 		expect(test.http.countFor('POST /Login')).toBe(1);
 		expect(test.http.countFor('GET /Orders')).toBe(1);
 	});
@@ -361,6 +367,31 @@ describe('fetchEntityCollection', () => {
 
 		expect(rows).toEqual([{ DocEntry: 1 }, { DocEntry: 2 }, { DocEntry: 3 }]);
 		expect(test.http.countFor(`GET ${nextLink}`)).toBe(1);
+	});
+
+	it('puts the query string on the first request and follows the next link as given', async () => {
+		const first = '/Orders?$select=DocEntry&$filter=DocTotal%20gt%201000';
+		// The form a live Service Layer v2 sends: relative to the API root, without
+		// a leading slash, and carrying the query options itself. The transport
+		// joins it to the base URL.
+		const nextLink = 'Orders?$select=DocEntry&$filter=DocTotal%20gt%201000&$skip=1';
+		const test = scenario({
+			'POST /Login': LOGIN_OK,
+			[`GET ${first}`]: {
+				statusCode: 200,
+				body: { value: [{ DocEntry: 1 }], '@odata.nextLink': nextLink },
+			},
+			[`GET ${nextLink}`]: { statusCode: 200, body: { value: [{ DocEntry: 2 }] } },
+		});
+
+		const rows = await test.collect(
+			'Orders',
+			undefined,
+			'?$select=DocEntry&$filter=DocTotal%20gt%201000',
+		);
+
+		expect(rows).toEqual([{ DocEntry: 1 }, { DocEntry: 2 }]);
+		expect(test.http.calls.map((call) => call.url)).toEqual(['/Login', first, nextLink]);
 	});
 
 	it('stops at the limit without following the next link', async () => {

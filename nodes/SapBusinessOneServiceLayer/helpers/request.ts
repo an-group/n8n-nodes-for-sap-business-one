@@ -184,6 +184,12 @@ interface ServiceLayerCollectionPage {
  * the common case. `@odata.nextLink` is still followed defensively in case
  * the requested page size is not honoured in full for a very large result
  * set.
+ *
+ * `queryString` (see helpers/queryOptions.ts) only goes on the first request.
+ * The next link is followed as given. Verified against a live Service Layer
+ * v2: it is relative to the API root without a leading slash
+ * (`Orders?$select=...&$skip=20`), which the transport joins to the base URL,
+ * and it carries `$select`, `$filter`, and `$orderby` on to the following pages.
  */
 export async function fetchEntityCollection(
 	this: ServiceLayerRequestContext,
@@ -191,10 +197,11 @@ export async function fetchEntityCollection(
 	credentialId: string | null | undefined,
 	entitySetName: string,
 	limit: number | undefined,
+	queryString = '',
 ): Promise<IDataObject[]> {
 	const results: IDataObject[] = [];
 	const pageSizeHeaders = { Prefer: `odata.maxpagesize=${limit ?? 0}` };
-	let url: string | undefined = `/${entitySetName}`;
+	let url: string | undefined = `/${entitySetName}${queryString}`;
 
 	while (url !== undefined) {
 		const { body } = await serviceLayerApiRequest.call(this, credentials, credentialId, {

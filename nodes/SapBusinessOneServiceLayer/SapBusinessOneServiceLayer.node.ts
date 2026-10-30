@@ -17,9 +17,16 @@ import { CUSTOM_API_CALL_BODY_METHODS, executeCustomApiCall } from './helpers/cu
 import { buildEntityBody } from './helpers/entityBody';
 import { buildEntityKeySegment } from './helpers/entityPath';
 import { getServiceLayerMetadata } from './helpers/metadata';
+import { buildEntityQueryString } from './helpers/queryOptions';
 import { fetchEntityCollection, serviceLayerApiRequest } from './helpers/request';
 import { executeBoundOperation, executeServiceOperation } from './helpers/serviceOperation';
-import { getBoundOperations, getEntitySets, getServiceOperations } from './methods/loadOptions';
+import {
+	getBoundOperations,
+	getEntitySets,
+	getSelectableFields,
+	getServiceOperations,
+	getSortableFields,
+} from './methods/loadOptions';
 import {
 	getBoundOperationParameters,
 	getEntityFields,
@@ -36,6 +43,11 @@ function getMappedValues(
 	const parameter = context.getNodeParameter(parameterName, itemIndex) as ResourceMapperValue;
 
 	return (parameter.value ?? {}) as IDataObject;
+}
+
+/** Reads the Entity Set `Options` collection of `Get` and `Get Many`. */
+function getEntityQueryOptions(context: IExecuteFunctions, itemIndex: number): IDataObject {
+	return context.getNodeParameter('options', itemIndex, {}) as IDataObject;
 }
 
 export class SapBusinessOneServiceLayer implements INodeType {
@@ -284,6 +296,94 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				description: 'Max number of results to return',
 			},
 			{
+				displayName: 'Options',
+				name: 'options',
+				type: 'collection',
+				placeholder: 'Add option',
+				default: {},
+				displayOptions: {
+					show: {
+						resource: ['entitySet'],
+						operation: ['get', 'getMany'],
+					},
+				},
+				options: [
+					{
+						displayName: 'Select Field Names or IDs',
+						name: 'select',
+						type: 'multiOptions',
+						typeOptions: {
+							loadOptionsMethod: 'getSelectableFields',
+							loadOptionsDependsOn: ['entitySet'],
+						},
+						default: [],
+						description:
+							'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+						hint: 'Only these properties are returned ($select). Without a choice, all are returned.',
+					},
+					{
+						displayName: 'Filter',
+						name: 'filter',
+						type: 'string',
+						default: '',
+						placeholder: "DocTotal gt 1000 and startswith(CardCode,'C')",
+						displayOptions: {
+							show: {
+								'/operation': ['getMany'],
+							},
+						},
+						description:
+							'OData $filter expression, sent as entered. Strings and enum values go in single quotes (CardType eq \'cCustomer\'), numbers without. Supported: eq, ne, gt, ge, lt, le, and, or, not, parentheses, contains, startswith, endswith.',
+					},
+					{
+						displayName: 'Sort',
+						name: 'sort',
+						type: 'fixedCollection',
+						placeholder: 'Add sort field',
+						default: {},
+						typeOptions: {
+							multipleValues: true,
+						},
+						displayOptions: {
+							show: {
+								'/operation': ['getMany'],
+							},
+						},
+						description: 'Order of the results ($orderby), in the order given',
+						options: [
+							{
+								displayName: 'Sort Field',
+								name: 'fields',
+								values: [
+									{
+										displayName: 'Field Name or ID',
+										name: 'field',
+										type: 'options',
+										typeOptions: {
+											loadOptionsMethod: 'getSortableFields',
+											loadOptionsDependsOn: ['entitySet'],
+										},
+										default: '',
+										description:
+											'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+									},
+									{
+										displayName: 'Direction',
+										name: 'direction',
+										type: 'options',
+										options: [
+											{ name: 'Ascending', value: 'asc' },
+											{ name: 'Descending', value: 'desc' },
+										],
+										default: 'asc',
+									},
+								],
+							},
+						],
+					},
+				],
+			},
+			{
 				displayName: 'Service Operation Name or ID',
 				name: 'serviceOperation',
 				type: 'options',
@@ -430,7 +530,9 @@ export class SapBusinessOneServiceLayer implements INodeType {
 		loadOptions: {
 			getBoundOperations,
 			getEntitySets,
+			getSelectableFields,
 			getServiceOperations,
+			getSortableFields,
 		},
 		resourceMapping: {
 			getBoundOperationParameters,
@@ -513,11 +615,16 @@ export class SapBusinessOneServiceLayer implements INodeType {
 						entity,
 						getMappedValues(this, 'keyFields', itemIndex),
 					);
+					// Only Select Field Names or IDs applies to Get; Filter and Sort may still be stored
+					// from Get Many, hidden in the editor, and must not be sent.
+					const queryString = buildEntityQueryString({
+						select: getEntityQueryOptions(this, itemIndex).select,
+					});
 					const { body } = await serviceLayerApiRequest.call(
 						this,
 						credentials,
 						credentialId,
-						{ url: `/${keySegment}`, method: 'GET' },
+						{ url: `/${keySegment}${queryString}`, method: 'GET' },
 					);
 					returnData.push({ json: body as IDataObject, pairedItem: { item: itemIndex } });
 					continue;
@@ -535,6 +642,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 						credentialId,
 						entitySetName,
 						limit,
+						buildEntityQueryString(getEntityQueryOptions(this, itemIndex)),
 					);
 
 					for (const entityData of entities) {

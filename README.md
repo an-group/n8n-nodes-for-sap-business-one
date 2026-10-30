@@ -146,8 +146,8 @@ The node exposes a **Resource** selector with three values: **Entity Set**, **Se
 
 **Entity Set** authenticates, fetches and parses the connected instance's Service Layer metadata (`/$metadata`), and lets you pick an entity set (for example `BusinessPartners`, `Orders`, `Items`) from a dynamic, metadata-driven list. Its **Operation** supports:
 
-- **Get** — fetch a single entity by its key
-- **Get Many** — fetch a collection, with `Return All`/`Limit`
+- **Get** — fetch a single entity by its key, optionally only some of its fields
+- **Get Many** — fetch a collection, with `Return All`/`Limit`, and optionally fields, a filter, and a sort order
 - **Create** — create an entity
 - **Update** — update an entity by its key
 - **Delete** — delete an entity by its key
@@ -159,7 +159,7 @@ The node exposes a **Resource** selector with three values: **Entity Set**, **Se
 
 The following are planned for later releases:
 
-- `$select`, `$filter`, `$orderby`, and `$expand` query options for Get/Get Many
+- A guided filter for Get Many, and the `$expand` query option
 - Structured SAP Business One error handling
 - Webhook and event integration
 
@@ -176,7 +176,13 @@ These are planned and not yet available in the current development version.
   - a single complex property (`AddressExtension`) is merged field by field: sub-fields not sent keep their value
 
   To replace collections instead, turn on **Replace Collections**. Update then sends the `B1S-ReplaceCollectionsOnPatch: true` request header, and the lines sent replace the existing ones — observed live both with and without other properties in the same update.
-- **Get Many** pagination — the Service Layer defaults to 20 rows per page regardless of how many match. `Get Many` requests the page size it actually needs (`Limit`, or unlimited for `Return All`) via the `Prefer: odata.maxpagesize` request header, which normally returns everything in a single request; the server's own pagination (`@odata.nextLink`) is still followed as a fallback if a very large result is nonetheless split across pages.
+- **Options** (Get, Get Many) — query options sent with the request:
+  - **Select Field Names or IDs** (`$select`) — return only these properties, picked from the metadata. Collections and complex properties such as `DocumentLines` can be picked too and come back in full. Without a choice, all properties are returned. An expression may give a list or a comma-separated string. The Service Layer still adds `@odata.etag` to each row.
+  - **Filter** (`$filter`, Get Many only) — an OData filter expression, sent as entered, for example `DocTotal gt 1000 and startswith(CardCode,'C')`. Strings and enum values go in single quotes (`CardType eq 'cCustomer'`), with a quote inside doubled (`'O''Brien'`); numbers go without (`DocTotal gt '1000'` is rejected). Dates work quoted (`DocDate ge '2026-01-01'`). Supported: `eq`, `ne`, `gt`, `ge`, `lt`, `le`, `and`, `or`, `not`, parentheses, `contains`, `startswith`, `endswith`. The expression is not checked by the node; a mistake fails with the Service Layer's own message.
+  - **Sort** (`$orderby`, Get Many only) — one or more fields with a direction, applied in the order given. Only single-value properties are offered.
+
+  Values are percent-encoded, so `&`, `#`, and `%` inside a filter value are safe. For `$expand`, `$apply` (aggregation, grouping), or `$crossjoin`, use **Custom API Call**.
+- **Get Many** pagination — the Service Layer defaults to 20 rows per page regardless of how many match. `Get Many` requests the page size it actually needs (`Limit`, or unlimited for `Return All`) via the `Prefer: odata.maxpagesize` request header, which normally returns everything in a single request; the server's own pagination (`@odata.nextLink`) is still followed as a fallback if a very large result is nonetheless split across pages. Verified live: the next link keeps `$select`, `$filter`, and `$orderby`, so every page is filtered, reduced, and sorted alike.
 
 #### Execute Action or Function
 
