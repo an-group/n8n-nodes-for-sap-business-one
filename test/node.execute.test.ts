@@ -63,7 +63,14 @@ function entitySetParams(
 	extra: Record<string, ParameterValue> = {},
 	entitySet = 'Orders',
 ): Record<string, ParameterValue> {
-	return { resource: 'entitySet', operation, entitySet, replaceCollections: false, ...extra };
+	return {
+		resource: 'entitySet',
+		operation,
+		entitySet,
+		replaceCollections: false,
+		options: {},
+		...extra,
+	};
 }
 
 describe('Entity Set operations', () => {
@@ -183,6 +190,95 @@ describe('Entity Set operations', () => {
 
 		expect(test.http.callsFor('GET /Orders')[0].headers?.Prefer).toBe('odata.maxpagesize=2');
 		expect(output[0]).toHaveLength(2);
+	});
+});
+
+describe('Entity Set: query options', () => {
+	it('sends Fields, Filter, and Sort with Get Many', async () => {
+		const url =
+			"/Orders?$select=DocEntry%2CCardCode&$filter=CardCode%20eq%20'C1'&$orderby=DocEntry%20desc";
+		const test = harness({
+			routes: {
+				[`GET ${url}`]: { statusCode: 200, body: { value: [{ DocEntry: 2 }, { DocEntry: 1 }] } },
+			},
+			parameters: entitySetParams('getMany', {
+				returnAll: false,
+				limit: 10,
+				options: {
+					select: ['DocEntry', 'CardCode'],
+					filter: "CardCode eq 'C1'",
+					sort: { fields: [{ field: 'DocEntry', direction: 'desc' }] },
+				},
+			}),
+		});
+
+		const output = await test.run();
+
+		expect(test.http.callsFor(`GET ${url}`)[0].headers?.Prefer).toBe('odata.maxpagesize=10');
+		expect(output[0].map((item) => item.json)).toEqual([{ DocEntry: 2 }, { DocEntry: 1 }]);
+	});
+
+	it('sends Fields with Get', async () => {
+		const test = harness({
+			routes: {
+				'GET /Orders(45)?$select=DocEntry%2CDocumentLines': {
+					statusCode: 200,
+					body: { DocEntry: 45, DocumentLines: [] },
+				},
+			},
+			parameters: entitySetParams('get', {
+				keyFields: mapperValue({ DocEntry: 45 }),
+				options: { select: ['DocEntry', 'DocumentLines'] },
+			}),
+		});
+
+		const output = await test.run();
+
+		expect(output[0][0].json).toEqual({ DocEntry: 45, DocumentLines: [] });
+	});
+
+	it('leaves Filter and Sort out of Get, even when they are still stored', async () => {
+		const test = harness({
+			routes: { 'GET /Orders(45)': { statusCode: 200, body: { DocEntry: 45 } } },
+			parameters: entitySetParams('get', {
+				keyFields: mapperValue({ DocEntry: 45 }),
+				options: {
+					filter: 'DocTotal gt 1',
+					sort: { fields: [{ field: 'DocEntry', direction: 'desc' }] },
+				},
+			}),
+		});
+
+		await test.run();
+
+		expect(test.http.countFor('GET /Orders(45)')).toBe(1);
+	});
+
+	it('reads the options per item, so expressions can differ between items', async () => {
+		const test = harness({
+			routes: {
+				"GET /Orders?$filter=CardCode%20eq%20'C1'": {
+					statusCode: 200,
+					body: { value: [{ DocEntry: 1 }] },
+				},
+				"GET /Orders?$filter=CardCode%20eq%20'C2'": {
+					statusCode: 200,
+					body: { value: [{ DocEntry: 2 }] },
+				},
+			},
+			items: [{ json: {} }, { json: {} }],
+			parameters: entitySetParams('getMany', {
+				returnAll: true,
+				options: (itemIndex: number) => ({ filter: `CardCode eq 'C${itemIndex + 1}'` }),
+			}),
+		});
+
+		const output = await test.run();
+
+		expect(output[0]).toEqual([
+			{ json: { DocEntry: 1 }, pairedItem: { item: 0 } },
+			{ json: { DocEntry: 2 }, pairedItem: { item: 1 } },
+		]);
 	});
 });
 
@@ -711,7 +807,11 @@ describe('Custom API Call', () => {
 	});
 
 	it.each([
-		['invalid JSON', customCallParams('POST', '/Orders', '{nope'), 'The JSON body is not valid JSON'],
+		[
+			'invalid JSON',
+			customCallParams('POST', '/Orders', '{nope'),
+			'The JSON body is not valid JSON',
+		],
 		[
 			'an absolute URL',
 			customCallParams('GET', 'https://evil.invalid/Orders'),
@@ -750,7 +850,10 @@ describe('Custom API Call', () => {
 	it('logs in again and retries once when the session has expired', async () => {
 		const test = harness({
 			routes: {
-				'POST /Login': [LOGIN_OK, { statusCode: 200, body: { SessionId: 'sess-2', SessionTimeout: 30 } }],
+				'POST /Login': [
+					LOGIN_OK,
+					{ statusCode: 200, body: { SessionId: 'sess-2', SessionTimeout: 30 } },
+				],
 				'GET /Orders(45)': [
 					{ statusCode: 401, body: { error: { code: 301, message: 'Invalid session' } } },
 					{ statusCode: 200, body: { DocEntry: 45 } },

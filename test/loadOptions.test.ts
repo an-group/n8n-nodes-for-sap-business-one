@@ -5,12 +5,15 @@ import { SERVICE_LAYER_CREDENTIAL_NAME } from '../nodes/SapBusinessOneServiceLay
 import {
 	getBoundOperations,
 	getEntitySets,
+	getSelectableFields,
 	getServiceOperations,
+	getSortableFields,
 } from '../nodes/SapBusinessOneServiceLayer/methods/loadOptions';
 import {
 	EDMX_BOUND_OPERATIONS,
 	EDMX_EMPTY,
 	EDMX_SERVICE_OPERATIONS,
+	EDMX_STRUCTURED_PROPERTIES,
 	EDMX_V1,
 	SYNTHETIC_EDMX_V4,
 } from './fixtures/metadataDocuments';
@@ -229,6 +232,92 @@ describe('getBoundOperations', () => {
 		const { options, http } = await boundOperationsFor('');
 
 		expect(options).toEqual([]);
+		expect(http.calls).toHaveLength(0);
+	});
+});
+
+async function fieldsFor(
+	method: typeof getSelectableFields | typeof getSortableFields,
+	entitySet: string | undefined,
+) {
+	const { context, http } = scenario({
+		metadataXml: EDMX_STRUCTURED_PROPERTIES,
+		parameters: { entitySet },
+	});
+
+	return { values: (await method.call(context)).map((option) => option.value), http };
+}
+
+describe('getSelectableFields', () => {
+	it('lists every property sorted by name, collections and complex properties included', async () => {
+		const { values } = await fieldsFor(getSelectableFields, 'Orders');
+
+		expect(values).toEqual([
+			'AddressExtension',
+			'Approver',
+			'CardCode',
+			'DocEntry',
+			'DocTime',
+			'DocumentLines',
+			'DocumentStatus',
+			'Mystery',
+			'Permissions',
+			'Placeholder',
+			'Tags',
+		]);
+	});
+
+	it('labels each option with the property name', async () => {
+		const { context } = scenario({
+			metadataXml: EDMX_STRUCTURED_PROPERTIES,
+			parameters: { entitySet: 'KeyOnlys' },
+		});
+
+		await expect(getSelectableFields.call(context)).resolves.toEqual([
+			{ name: 'Code', value: 'Code' },
+		]);
+	});
+
+	it('returns an empty list for an entity set the metadata does not describe', async () => {
+		const { values } = await fieldsFor(getSelectableFields, 'NoSuchSet');
+
+		expect(values).toEqual([]);
+	});
+
+	it('stays empty, and fetches nothing, while no entity set is selected', async () => {
+		const { values, http } = await fieldsFor(getSelectableFields, '');
+
+		expect(values).toEqual([]);
+		expect(http.calls).toHaveLength(0);
+	});
+});
+
+describe('getSortableFields', () => {
+	it('lists only single primitive and enum properties', async () => {
+		const { values } = await fieldsFor(getSortableFields, 'Orders');
+
+		// Left out: the complex AddressExtension, the entity-typed Approver, the
+		// collections DocumentLines and Tags, and the undeclared Mystery.
+		expect(values).toEqual([
+			'CardCode',
+			'DocEntry',
+			'DocTime',
+			'DocumentStatus',
+			'Permissions',
+			'Placeholder',
+		]);
+	});
+
+	it('returns an empty list for an entity set the metadata does not describe', async () => {
+		const { values } = await fieldsFor(getSortableFields, 'NoSuchSet');
+
+		expect(values).toEqual([]);
+	});
+
+	it('stays empty, and fetches nothing, while no entity set is selected', async () => {
+		const { values, http } = await fieldsFor(getSortableFields, undefined);
+
+		expect(values).toEqual([]);
 		expect(http.calls).toHaveLength(0);
 	});
 });
