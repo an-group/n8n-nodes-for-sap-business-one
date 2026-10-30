@@ -35,11 +35,19 @@ function mapEdmTypeToFieldType(edmType: string): ResourceMapperField['type'] {
  * a dropdown of its member names, sent unchanged (e.g. `tYES`); a flags enum,
  * whose value may combine several members, and an enum without members keep a
  * free-text field.
+ *
+ * An `Edm.TimeOfDay` gets a `time` field: n8n renders it as a text input that
+ * the editor validates as `hh:mm(:ss)`, which the Service Layer accepts as is.
+ * Key fields keep `mapEdmTypeToFieldType`, which offers a date picker for it.
  */
 function getSingleValueField(
 	edmType: string,
 	metadata: ServiceLayerMetadata,
 ): Pick<ResourceMapperField, 'type' | 'options'> {
+	if (edmType === 'Edm.TimeOfDay') {
+		return { type: 'time' };
+	}
+
 	const typeInfo = classifyServiceLayerType(edmType, metadata);
 	const enumType =
 		typeInfo.category === 'enum' ? metadata.enumTypes.get(typeInfo.typeName) : undefined;
