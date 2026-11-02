@@ -320,7 +320,7 @@ async function loginToServiceLayer(
 			this.getNode(),
 			sanitizeServiceLayerError(response.statusCode, response.body),
 			{
-				message: 'SAP Business One Service Layer authentication failed',
+				message: 'The SAP Business One Service Layer rejected the sign-in',
 				httpCode: String(response.statusCode),
 			},
 		);

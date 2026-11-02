@@ -146,7 +146,7 @@ describe('Entity Set operations', () => {
 		});
 	});
 
-	it('deletes an entity and reports the key it used', async () => {
+	it('deletes an entity and confirms it with { deleted: true }', async () => {
 		const test = harness({
 			routes: { 'DELETE /Orders(45)': { statusCode: 204, body: '' } },
 			parameters: entitySetParams('delete', { keyFields: mapperValue({ DocEntry: 45 }) }),
@@ -155,11 +155,8 @@ describe('Entity Set operations', () => {
 		const output = await test.run();
 
 		expect(test.http.callsFor('DELETE /Orders(45)')[0].body).toBeUndefined();
-		expect(output[0][0].json).toEqual({
-			success: true,
-			entitySet: 'Orders',
-			key: { DocEntry: 45 },
-		});
+		// The n8n UX guidelines ask deleting operations to return exactly this object.
+		expect(output[0][0]).toEqual({ json: { deleted: true }, pairedItem: { item: 0 } });
 	});
 
 	it('returns every row when Return All is set', async () => {

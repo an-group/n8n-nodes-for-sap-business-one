@@ -45,7 +45,7 @@ export function parseStructuredValue(
 				context.getNode(),
 				`The value of ${target.kind} "${target.name}" is not valid JSON`,
 				{
-					description: `"${target.name}" (${target.edmType}) expects ${expected}. Check it for syntax errors such as missing quotes or trailing commas.`,
+					description: `"${target.name}" (${target.edmType}) expects ${expected}. Check it for missing quotes or trailing commas.`,
 				},
 			);
 		}

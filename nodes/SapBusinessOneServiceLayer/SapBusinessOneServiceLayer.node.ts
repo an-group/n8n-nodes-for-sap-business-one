@@ -132,12 +132,12 @@ export class SapBusinessOneServiceLayer implements INodeType {
 					},
 				},
 				options: [
-					{ name: 'Create', value: 'create', description: 'Create an entity', action: 'Create an entity' },
-					{ name: 'Delete', value: 'delete', description: 'Delete an entity', action: 'Delete an entity' },
-					{ name: 'Execute Action or Function', value: 'executeOperation', description: 'Call an action or function bound to an entity, such as closing an order', action: 'Execute an action or function on an entity' },
-					{ name: 'Get', value: 'get', description: 'Get a single entity by its key', action: 'Get an entity' },
-					{ name: 'Get Many', value: 'getMany', description: 'Get many entities', action: 'Get many entities' },
-					{ name: 'Update', value: 'update', description: 'Update an entity', action: 'Update an entity' },
+					{ name: 'Create', value: 'create', description: 'Create a new entity in the entity set', action: 'Create entity' },
+					{ name: 'Delete', value: 'delete', description: 'Delete an entity by its key', action: 'Delete entity' },
+					{ name: 'Execute Action or Function', value: 'executeOperation', description: 'Call an action or function bound to an entity, such as closing an order', action: 'Execute action or function on entity' },
+					{ name: 'Get', value: 'get', description: 'Retrieve an entity by its key', action: 'Get entity' },
+					{ name: 'Get Many', value: 'getMany', description: 'Retrieve a list of entities, optionally filtered and sorted', action: 'Get many entities' },
+					{ name: 'Update', value: 'update', description: 'Update fields of an existing entity', action: 'Update entity' },
 				],
 				default: 'get',
 			},
@@ -979,7 +979,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 					});
 
 					returnData.push({
-						json: { success: true, entitySet: entitySetName, key: keyValues },
+						json: { deleted: true },
 						pairedItem: { item: itemIndex },
 					});
 					continue;
