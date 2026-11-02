@@ -16,6 +16,7 @@ import {
 import { CUSTOM_API_CALL_BODY_METHODS, executeCustomApiCall } from './helpers/customApiCall';
 import { buildEntityBody } from './helpers/entityBody';
 import { buildEntityKeySegment } from './helpers/entityPath';
+import { buildFilterExpression } from './helpers/filterExpression';
 import { getServiceLayerMetadata } from './helpers/metadata';
 import { buildEntityQueryString } from './helpers/queryOptions';
 import { fetchEntityCollection, serviceLayerApiRequest } from './helpers/request';
@@ -23,6 +24,8 @@ import { executeBoundOperation, executeServiceOperation } from './helpers/servic
 import {
 	getBoundOperations,
 	getEntitySets,
+	getFilterEnumValues,
+	getFilterableFields,
 	getSelectableFields,
 	getServiceOperations,
 	getSortableFields,
@@ -296,6 +299,247 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				description: 'Max number of results to return',
 			},
 			{
+				displayName: 'Filter',
+				name: 'filterType',
+				type: 'options',
+				options: [
+					{
+						name: 'None',
+						value: 'none',
+						description: 'All entities are returned',
+					},
+					{
+						name: 'Build Manually',
+						value: 'manual',
+						description: 'Pick fields, operators and values from lists',
+					},
+					{
+						name: 'OData String',
+						value: 'string',
+						description: 'Enter an OData $filter expression yourself, e.g. for mixed AND and OR',
+					},
+				],
+				default: 'none',
+				displayOptions: {
+					show: {
+						resource: ['entitySet'],
+						operation: ['getMany'],
+					},
+				},
+				description: 'Which entities are returned ($filter)',
+			},
+			{
+				displayName: 'Must Match',
+				name: 'matchType',
+				type: 'options',
+				options: [
+					{
+						name: 'All Conditions',
+						value: 'and',
+					},
+					{
+						name: 'Any Condition',
+						value: 'or',
+					},
+				],
+				default: 'and',
+				displayOptions: {
+					show: {
+						resource: ['entitySet'],
+						operation: ['getMany'],
+						filterType: ['manual'],
+					},
+				},
+			},
+			{
+				displayName: 'Conditions',
+				name: 'conditions',
+				type: 'fixedCollection',
+				placeholder: 'Add condition',
+				default: {},
+				typeOptions: {
+					multipleValues: true,
+				},
+				displayOptions: {
+					show: {
+						resource: ['entitySet'],
+						operation: ['getMany'],
+						filterType: ['manual'],
+					},
+				},
+				description:
+					'Only entities that meet these conditions are returned. Without a condition, all are returned.',
+				options: [
+					{
+						displayName: 'Condition',
+						name: 'condition',
+						values: [
+							{
+								displayName: 'Field Name or ID',
+								name: 'field',
+								type: 'options',
+								typeOptions: {
+									loadOptionsMethod: 'getFilterableFields',
+									loadOptionsDependsOn: ['entitySet'],
+								},
+								default: '',
+								description:
+									'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+							},
+							{
+								displayName: 'Operator',
+								name: 'comparisonOperator',
+								type: 'options',
+								options: [
+									{ name: 'Equal', value: 'equal' },
+									{ name: 'Greater Than', value: 'greaterThan' },
+									{ name: 'Greater Than or Equal', value: 'greaterOrEqual' },
+									{ name: 'Is Empty', value: 'isEmpty' },
+									{ name: 'Is Not Empty', value: 'isNotEmpty' },
+									{ name: 'Less Than', value: 'lessThan' },
+									{ name: 'Less Than or Equal', value: 'lessOrEqual' },
+									{ name: 'Not Equal', value: 'notEqual' },
+								],
+								default: 'equal',
+								displayOptions: {
+									show: {
+										operatorSet: ['ordered'],
+									},
+								},
+								description: 'Dates are compared by day only',
+							},
+							{
+								displayName: 'Operator',
+								name: 'equalityOperator',
+								type: 'options',
+								options: [
+									{ name: 'Equal', value: 'equal' },
+									{ name: 'Is Empty', value: 'isEmpty' },
+									{ name: 'Is Not Empty', value: 'isNotEmpty' },
+									{ name: 'Not Equal', value: 'notEqual' },
+								],
+								default: 'equal',
+								displayOptions: {
+									show: {
+										operatorSet: ['equality'],
+									},
+								},
+							},
+							{
+								displayName: 'Operator',
+								name: 'operator',
+								type: 'options',
+								options: [
+									{ name: 'Contains', value: 'contains' },
+									{ name: 'Ends With', value: 'endsWith' },
+									{ name: 'Equal', value: 'equal' },
+									{ name: 'Greater Than', value: 'greaterThan' },
+									{ name: 'Greater Than or Equal', value: 'greaterOrEqual' },
+									{ name: 'Is Empty', value: 'isEmpty' },
+									{ name: 'Is Not Empty', value: 'isNotEmpty' },
+									{ name: 'Less Than', value: 'lessThan' },
+									{ name: 'Less Than or Equal', value: 'lessOrEqual' },
+									{ name: 'Not Contains', value: 'notContains' },
+									{ name: 'Not Ends With', value: 'notEndsWith' },
+									{ name: 'Not Equal', value: 'notEqual' },
+									{ name: 'Not Starts With', value: 'notStartsWith' },
+									{ name: 'Starts With', value: 'startsWith' },
+								],
+								default: 'equal',
+								displayOptions: {
+									hide: {
+										operatorSet: ['ordered', 'equality'],
+									},
+								},
+								description: 'Contains, Starts With and Ends With are case-sensitive',
+							},
+							{
+								displayName: 'Operator Set',
+								name: 'operatorSet',
+								type: 'hidden',
+								// The field's value carries the operators that fit it (`DocDate|date|ordered`),
+								// which decides which of the operator inputs above is shown.
+								default: '={{$parameter["&field"].split("|")[2]}}',
+							},
+							{
+								displayName: 'Value',
+								name: 'value',
+								type: 'string',
+								default: '',
+								displayOptions: {
+									hide: {
+										valueType: ['enum', 'date'],
+										operator: ['isEmpty', 'isNotEmpty'],
+									},
+								},
+								description:
+									'Entered without quotes; it is quoted to match the field type. Times as 08:00:00.',
+							},
+							{
+								displayName: 'Value',
+								name: 'dateValue',
+								type: 'dateTime',
+								default: '',
+								displayOptions: {
+									show: {
+										valueType: ['date'],
+									},
+									hide: {
+										operator: ['isEmpty', 'isNotEmpty'],
+									},
+								},
+								description: 'Compared by day only; the time is ignored',
+							},
+							{
+								displayName: 'Value Name or ID',
+								name: 'enumValue',
+								type: 'options',
+								typeOptions: {
+									loadOptionsMethod: 'getFilterEnumValues',
+									loadOptionsDependsOn: ['&field'],
+								},
+								default: '',
+								displayOptions: {
+									show: {
+										valueType: ['enum'],
+									},
+									hide: {
+										operator: ['isEmpty', 'isNotEmpty'],
+									},
+								},
+								description:
+									'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+							},
+							{
+								displayName: 'Value Type',
+								name: 'valueType',
+								type: 'hidden',
+								// The field's value carries its kind (`DocDate|date`), which decides which
+								// of the value inputs above is shown; see getFilterableFields.
+								default: '={{$parameter["&field"].split("|")[1]}}',
+							},
+						],
+					},
+				],
+			},
+			{
+				displayName: 'Filter (OData)',
+				name: 'filterString',
+				type: 'string',
+				default: '',
+				placeholder: "e.g. DocTotal gt 1000 and startswith(CardCode,'C')",
+				displayOptions: {
+					show: {
+						resource: ['entitySet'],
+						operation: ['getMany'],
+						filterType: ['string'],
+					},
+				},
+				description:
+					'OData $filter expression, sent as entered. Strings and enum values go in single quotes (CardType eq \'cCustomer\'), numbers without. Supported: eq, ne, gt, ge, lt, le, and, or, not, parentheses, contains, startswith, endswith.',
+				hint: 'See <a href="https://help.sap.com/docs/SAP_BUSINESS_ONE/f110a154dd0f4c20bf7f3ebca9eeb794/3e5b7d980d99493f9271847450a927ef.html" target="_blank">Query Options</a> in the SAP Business One Service Layer documentation',
+			},
+			{
 				displayName: 'Options',
 				name: 'options',
 				type: 'collection',
@@ -321,63 +565,50 @@ export class SapBusinessOneServiceLayer implements INodeType {
 							'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 						hint: 'Only these properties are returned ($select). Without a choice, all are returned.',
 					},
-					{
-						displayName: 'Filter',
-						name: 'filter',
-						type: 'string',
-						default: '',
-						placeholder: "DocTotal gt 1000 and startswith(CardCode,'C')",
-						displayOptions: {
-							show: {
-								'/operation': ['getMany'],
-							},
-						},
-						description:
-							'OData $filter expression, sent as entered. Strings and enum values go in single quotes (CardType eq \'cCustomer\'), numbers without. Supported: eq, ne, gt, ge, lt, le, and, or, not, parentheses, contains, startswith, endswith.',
+				],
+			},
+			{
+				displayName: 'Sort',
+				name: 'sort',
+				type: 'fixedCollection',
+				placeholder: 'Add sort field',
+				default: {},
+				typeOptions: {
+					multipleValues: true,
+				},
+				displayOptions: {
+					show: {
+						resource: ['entitySet'],
+						operation: ['getMany'],
 					},
+				},
+				description: 'Order of the results ($orderby), in the order given',
+				options: [
 					{
-						displayName: 'Sort',
-						name: 'sort',
-						type: 'fixedCollection',
-						placeholder: 'Add sort field',
-						default: {},
-						typeOptions: {
-							multipleValues: true,
-						},
-						displayOptions: {
-							show: {
-								'/operation': ['getMany'],
-							},
-						},
-						description: 'Order of the results ($orderby), in the order given',
-						options: [
+						displayName: 'Sort Field',
+						name: 'fields',
+						values: [
 							{
-								displayName: 'Sort Field',
-								name: 'fields',
-								values: [
-									{
-										displayName: 'Field Name or ID',
-										name: 'field',
-										type: 'options',
-										typeOptions: {
-											loadOptionsMethod: 'getSortableFields',
-											loadOptionsDependsOn: ['entitySet'],
-										},
-										default: '',
-										description:
-											'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
-									},
-									{
-										displayName: 'Direction',
-										name: 'direction',
-										type: 'options',
-										options: [
-											{ name: 'Ascending', value: 'asc' },
-											{ name: 'Descending', value: 'desc' },
-										],
-										default: 'asc',
-									},
+								displayName: 'Field Name or ID',
+								name: 'field',
+								type: 'options',
+								typeOptions: {
+									loadOptionsMethod: 'getSortableFields',
+									loadOptionsDependsOn: ['entitySet'],
+								},
+								default: '',
+								description:
+									'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+							},
+							{
+								displayName: 'Direction',
+								name: 'direction',
+								type: 'options',
+								options: [
+									{ name: 'Ascending', value: 'asc' },
+									{ name: 'Descending', value: 'desc' },
 								],
+								default: 'asc',
 							},
 						],
 					},
@@ -455,7 +686,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				type: 'string',
 				required: true,
 				default: '',
-				placeholder: '/Orders(45)',
+				placeholder: 'e.g. /Orders(45)',
 				displayOptions: {
 					show: {
 						resource: ['customApiCall'],
@@ -530,6 +761,8 @@ export class SapBusinessOneServiceLayer implements INodeType {
 		loadOptions: {
 			getBoundOperations,
 			getEntitySets,
+			getFilterEnumValues,
+			getFilterableFields,
 			getSelectableFields,
 			getServiceOperations,
 			getSortableFields,
@@ -615,8 +848,8 @@ export class SapBusinessOneServiceLayer implements INodeType {
 						entity,
 						getMappedValues(this, 'keyFields', itemIndex),
 					);
-					// Only Select Field Names or IDs applies to Get; Filter and Sort may still be stored
-					// from Get Many, hidden in the editor, and must not be sent.
+					// Only Select Field Names or IDs applies to Get; the filter and the sort of Get Many
+					// are parameters of their own and are not read here.
 					const queryString = buildEntityQueryString({
 						select: getEntityQueryOptions(this, itemIndex).select,
 					});
@@ -635,6 +868,22 @@ export class SapBusinessOneServiceLayer implements INodeType {
 					const limit = returnAll
 						? undefined
 						: (this.getNodeParameter('limit', itemIndex) as number);
+					const options = getEntityQueryOptions(this, itemIndex);
+					const filterType = this.getNodeParameter('filterType', itemIndex, 'none');
+					const filter = buildFilterExpression(
+						this,
+						entity,
+						metadata,
+						filterType === 'manual'
+							? {
+									filterType,
+									conditions: this.getNodeParameter('conditions', itemIndex, {}),
+									matchType: this.getNodeParameter('matchType', itemIndex, 'and'),
+								}
+							: filterType === 'string'
+								? { filterType, filterString: this.getNodeParameter('filterString', itemIndex, '') }
+								: { filterType },
+					);
 
 					const entities = await fetchEntityCollection.call(
 						this,
@@ -642,7 +891,11 @@ export class SapBusinessOneServiceLayer implements INodeType {
 						credentialId,
 						entitySetName,
 						limit,
-						buildEntityQueryString(getEntityQueryOptions(this, itemIndex)),
+						buildEntityQueryString({
+							select: options.select,
+							filter,
+							sort: this.getNodeParameter('sort', itemIndex, {}),
+						}),
 					);
 
 					for (const entityData of entities) {

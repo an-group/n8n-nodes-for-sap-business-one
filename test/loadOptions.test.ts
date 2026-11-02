@@ -5,6 +5,8 @@ import { SERVICE_LAYER_CREDENTIAL_NAME } from '../nodes/SapBusinessOneServiceLay
 import {
 	getBoundOperations,
 	getEntitySets,
+	getFilterEnumValues,
+	getFilterableFields,
 	getSelectableFields,
 	getServiceOperations,
 	getSortableFields,
@@ -12,6 +14,7 @@ import {
 import {
 	EDMX_BOUND_OPERATIONS,
 	EDMX_EMPTY,
+	EDMX_FILTERABLE_PROPERTIES,
 	EDMX_SERVICE_OPERATIONS,
 	EDMX_STRUCTURED_PROPERTIES,
 	EDMX_V1,
@@ -237,7 +240,7 @@ describe('getBoundOperations', () => {
 });
 
 async function fieldsFor(
-	method: typeof getSelectableFields | typeof getSortableFields,
+	method: typeof getSelectableFields | typeof getSortableFields | typeof getFilterableFields,
 	entitySet: string | undefined,
 ) {
 	const { context, http } = scenario({
@@ -318,6 +321,96 @@ describe('getSortableFields', () => {
 		const { values, http } = await fieldsFor(getSortableFields, undefined);
 
 		expect(values).toEqual([]);
+		expect(http.calls).toHaveLength(0);
+	});
+});
+
+describe('getFilterableFields', () => {
+	it('lists the fields of Sort, each value carrying its value input and operator set', async () => {
+		const { values } = await fieldsFor(getFilterableFields, 'Orders');
+
+		expect(values).toEqual([
+			'CardCode|text|text',
+			'DocEntry|text|ordered',
+			'DocTime|text|ordered',
+			'DocumentStatus|enum|equality',
+			// A flags enum and an enum without members keep a text input, but no
+			// string functions: on an enum they silently match nothing.
+			'Permissions|text|equality',
+			'Placeholder|text|equality',
+		]);
+	});
+
+	it('labels each option with the bare property name', async () => {
+		const { context } = scenario({
+			metadataXml: EDMX_STRUCTURED_PROPERTIES,
+			parameters: { entitySet: 'Orders' },
+		});
+		const options = await getFilterableFields.call(context);
+
+		expect(options).toContainEqual({ name: 'DocumentStatus', value: 'DocumentStatus|enum|equality' });
+	});
+
+	it('marks a date field for the date picker', async () => {
+		const { context } = scenario({
+			metadataXml: EDMX_FILTERABLE_PROPERTIES,
+			parameters: { entitySet: 'Orders' },
+		});
+		const values = (await getFilterableFields.call(context)).map((option) => option.value);
+
+		expect(values).toContain('DocDate|date|ordered');
+		expect(values).toContain('DocTotal|text|ordered');
+		expect(values).toContain('Printed|text|equality');
+	});
+
+	it('stays empty, and fetches nothing, while no entity set is selected', async () => {
+		const { values, http } = await fieldsFor(getFilterableFields, '');
+
+		expect(values).toEqual([]);
+		expect(http.calls).toHaveLength(0);
+	});
+});
+
+describe('getFilterEnumValues', () => {
+	async function enumValuesFor(entitySet: string | undefined, field: unknown) {
+		const { context, http } = scenario({
+			metadataXml: EDMX_STRUCTURED_PROPERTIES,
+			parameters: { entitySet, '&field': field },
+		});
+
+		return { options: await getFilterEnumValues.call(context), http };
+	}
+
+	it('lists the members of the enum field chosen in the same condition', async () => {
+		const { options } = await enumValuesFor('Orders', 'DocumentStatus|enum');
+
+		expect(options).toEqual([
+			{ name: 'bost_Open', value: 'bost_Open' },
+			{ name: 'bost_Close', value: 'bost_Close' },
+		]);
+	});
+
+	it('accepts a field name without the kind, as an expression may give it', async () => {
+		const { options } = await enumValuesFor('Orders', 'DocumentStatus');
+
+		expect(options).toHaveLength(2);
+	});
+
+	it.each([
+		['a field that is not an enum', 'CardCode|text'],
+		['a flags enum', 'Permissions|text'],
+		['an unknown field', 'NoSuchField|enum'],
+		['no field yet', undefined],
+	])('lists nothing for %s', async (_label, field) => {
+		const { options } = await enumValuesFor('Orders', field);
+
+		expect(options).toEqual([]);
+	});
+
+	it('stays empty, and fetches nothing, while no entity set is selected', async () => {
+		const { options, http } = await enumValuesFor('', 'DocumentStatus|enum');
+
+		expect(options).toEqual([]);
 		expect(http.calls).toHaveLength(0);
 	});
 });
