@@ -487,7 +487,7 @@ describe('ensureSession', () => {
 		expect(error).toBeInstanceOf(NodeApiError);
 
 		const text = flattenErrorText(error);
-		expect(text).toContain('authentication failed');
+		expect(text).toContain('rejected the sign-in');
 		expect(text).not.toContain(scenario.credentials.password);
 	});
 

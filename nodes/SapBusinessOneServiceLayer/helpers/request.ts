@@ -148,7 +148,7 @@ export async function serviceLayerApiRequest<T = unknown>(
 			this.getNode(),
 			sanitizeServiceLayerError(response.statusCode, response.body),
 			{
-				message: 'The SAP Business One Service Layer returned an error',
+				message: 'The SAP Business One Service Layer rejected the request',
 				httpCode: String(response.statusCode),
 			},
 		);

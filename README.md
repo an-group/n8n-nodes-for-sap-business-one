@@ -150,7 +150,7 @@ The node exposes a **Resource** selector with three values: **Entity Set**, **Se
 - **Get Many** — fetch a collection, with `Return All`/`Limit`, and optionally a filter (built from conditions or entered as an OData string), fields, and a sort order
 - **Create** — create an entity
 - **Update** — update an entity by its key
-- **Delete** — delete an entity by its key
+- **Delete** — delete an entity by its key; each deleted entity returns `{ "deleted": true }`
 - **Execute Action or Function** — call an Action or Function bound to one entity, for example closing an order (`Orders(45)/Close`)
 
 **Custom API Call** sends a request to any Service Layer endpoint you enter yourself, reusing the credential and session handling described below. See [Custom API Call](#custom-api-call).

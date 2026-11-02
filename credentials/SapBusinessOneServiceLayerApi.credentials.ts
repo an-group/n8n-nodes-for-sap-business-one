@@ -18,10 +18,10 @@ export class SapBusinessOneServiceLayerApi implements ICredentialType {
 			name: 'baseUrl',
 			type: 'string',
 			default: '',
-			placeholder: 'https://myserver.com:50000',
+			placeholder: 'e.g. https://myserver.com:50000',
 			required: true,
 			description:
-				'Service Layer host and port, without a path or trailing slash (e.g. https://server:50000). The /b1s/v2 API path is added automatically; only the Service Layer v2 API is supported',
+				'Service Layer host and port, without a path or trailing slash (e.g. https://myserver.com:50000). The /b1s/v2 API path is added automatically; only the Service Layer v2 API is supported',
 		},
 		{
 			displayName: 'User Name',

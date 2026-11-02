@@ -178,7 +178,7 @@ export function parseJsonBody(
 	if (parsed === INVALID_JSON) {
 		throw new NodeOperationError(context.getNode(), 'The JSON body is not valid JSON', {
 			description:
-				'Check the JSON body for syntax errors such as missing quotes or trailing commas.',
+				'Check the JSON body for missing quotes or trailing commas.',
 		});
 	}
 
