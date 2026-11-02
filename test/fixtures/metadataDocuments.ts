@@ -594,3 +594,18 @@ export const EDMX_EXPANDED_PARAMETERS = `<?xml version="1.0" encoding="UTF-8"?>
   </edmx:DataServices>
 </edmx:Edmx>
 `;
+
+/**
+ * `EDMX_STRUCTURED_PROPERTIES` plus the property types a `$filter` value is
+ * formatted by: a number (`DocTotal`, `Edm.Double`), a date (`DocDate`,
+ * `Edm.DateTimeOffset`, as on the real `Document`), and an `Edm.Boolean`,
+ * which the real Service Layer document does not use but the formatter still
+ * has to handle.
+ */
+export const EDMX_FILTERABLE_PROPERTIES = EDMX_STRUCTURED_PROPERTIES.replace(
+	'        <Property Name="DocTime" Type="Edm.TimeOfDay"/>',
+	`        <Property Name="DocTime" Type="Edm.TimeOfDay"/>
+        <Property Name="DocTotal" Type="Edm.Double"/>
+        <Property Name="DocDate" Type="Edm.DateTimeOffset"/>
+        <Property Name="Printed" Type="Edm.Boolean"/>`,
+);

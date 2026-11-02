@@ -6,6 +6,7 @@ import { SapBusinessOneServiceLayer } from '../nodes/SapBusinessOneServiceLayer/
 import {
 	EDMX_BOUND_OPERATIONS,
 	EDMX_EXPANDED_PARAMETERS,
+	EDMX_FILTERABLE_PROPERTIES,
 	EDMX_SERVICE_OPERATIONS,
 	EDMX_STRUCTURED_PROPERTIES,
 	SYNTHETIC_EDMX_V4,
@@ -68,7 +69,10 @@ function entitySetParams(
 		operation,
 		entitySet,
 		replaceCollections: false,
+		filterType: 'none',
+		matchType: 'and',
 		options: {},
+		sort: {},
 		...extra,
 	};
 }
@@ -204,11 +208,10 @@ describe('Entity Set: query options', () => {
 			parameters: entitySetParams('getMany', {
 				returnAll: false,
 				limit: 10,
-				options: {
-					select: ['DocEntry', 'CardCode'],
-					filter: "CardCode eq 'C1'",
-					sort: { fields: [{ field: 'DocEntry', direction: 'desc' }] },
-				},
+				filterType: 'string',
+				filterString: "CardCode eq 'C1'",
+				options: { select: ['DocEntry', 'CardCode'] },
+				sort: { fields: [{ field: 'DocEntry', direction: 'desc' }] },
 			}),
 		});
 
@@ -242,10 +245,9 @@ describe('Entity Set: query options', () => {
 			routes: { 'GET /Orders(45)': { statusCode: 200, body: { DocEntry: 45 } } },
 			parameters: entitySetParams('get', {
 				keyFields: mapperValue({ DocEntry: 45 }),
-				options: {
-					filter: 'DocTotal gt 1',
-					sort: { fields: [{ field: 'DocEntry', direction: 'desc' }] },
-				},
+				filterType: 'string',
+				filterString: 'DocTotal gt 1',
+				sort: { fields: [{ field: 'DocEntry', direction: 'desc' }] },
 			}),
 		});
 
@@ -269,7 +271,8 @@ describe('Entity Set: query options', () => {
 			items: [{ json: {} }, { json: {} }],
 			parameters: entitySetParams('getMany', {
 				returnAll: true,
-				options: (itemIndex: number) => ({ filter: `CardCode eq 'C${itemIndex + 1}'` }),
+				filterType: 'string',
+				filterString: (itemIndex: number) => `CardCode eq 'C${itemIndex + 1}'`,
 			}),
 		});
 
@@ -279,6 +282,75 @@ describe('Entity Set: query options', () => {
 			{ json: { DocEntry: 1 }, pairedItem: { item: 0 } },
 			{ json: { DocEntry: 2 }, pairedItem: { item: 1 } },
 		]);
+	});
+});
+
+describe('Entity Set: guided filter', () => {
+	const FILTERABLE_METADATA: RouteTable = {
+		'GET /$metadata': { statusCode: 200, body: EDMX_FILTERABLE_PROPERTIES },
+	};
+
+	it('sends the Conditions joined by Must Match', async () => {
+		const filter =
+			"DocumentStatus eq 'bost_Open' or DocTotal gt 1000 or contains(CardCode,'O''B')";
+		const url = `/Orders?$filter=${encodeURIComponent(filter)}`;
+		const test = harness({
+			routes: {
+				...FILTERABLE_METADATA,
+				[`GET ${url}`]: { statusCode: 200, body: { value: [{ DocEntry: 7 }] } },
+			},
+			parameters: entitySetParams('getMany', {
+				returnAll: true,
+				filterType: 'manual',
+				conditions: {
+					condition: [
+						{ field: 'DocumentStatus|enum', operator: 'equal', enumValue: 'bost_Open' },
+						{ field: 'DocTotal|text', operator: 'greaterThan', value: '1000' },
+						{ field: 'CardCode|text', operator: 'contains', value: "O'B" },
+					],
+				},
+				matchType: 'or',
+			}),
+		});
+
+		const output = await test.run();
+
+		expect(test.http.countFor(`GET ${url}`)).toBe(1);
+		expect(output[0]).toEqual([{ json: { DocEntry: 7 }, pairedItem: { item: 0 } }]);
+	});
+
+	it('sends no filter with None, even when conditions and a string are still stored', async () => {
+		const test = harness({
+			routes: { 'GET /Orders': { statusCode: 200, body: { value: [{ DocEntry: 1 }] } } },
+			parameters: entitySetParams('getMany', {
+				returnAll: true,
+				filterType: 'none',
+		matchType: 'and',
+				conditions: { condition: [{ field: 'DocTotal|text', operator: 'equal', value: '1' }] },
+				filterString: 'DocTotal gt 1',
+			}),
+		});
+
+		await test.run();
+
+		expect(test.http.countFor('GET /Orders')).toBe(1);
+	});
+
+	it('rejects a non-numeric value on a number field before sending', async () => {
+		const test = harness({
+			routes: FILTERABLE_METADATA,
+			parameters: entitySetParams('getMany', {
+				returnAll: true,
+				filterType: 'manual',
+				conditions: { condition: [{ field: 'DocTotal|text', operator: 'equal', value: 'lots' }] },
+			}),
+		});
+
+		const error = await test.run().catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(NodeOperationError);
+		expect(flattenErrorText(error)).toContain('Condition 1 ("DocTotal") needs a number');
+		expect(test.http.calls.filter((call) => call.url.startsWith('/Orders'))).toHaveLength(0);
 	});
 });
 

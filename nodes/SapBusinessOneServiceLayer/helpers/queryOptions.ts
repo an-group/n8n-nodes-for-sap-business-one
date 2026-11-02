@@ -49,8 +49,10 @@ function toOrderByList(value: unknown): string[] {
  * filter value from splitting or truncating the URL. `'` is left as is, so
  * OData string literals keep their quotes.
  *
- * The filter is sent as entered: it is not parsed, quoted, or validated, and a
- * mistake surfaces as the Service Layer's own error.
+ * `filter` is the finished expression: Get Many builds it from the Conditions
+ * and the free-text Filter (see helpers/filterExpression.ts). It is not
+ * parsed or validated here; a mistake in the free text surfaces as the
+ * Service Layer's own error.
  */
 export function buildEntityQueryString(options: IDataObject): string {
 	const parameters: string[] = [];

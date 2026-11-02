@@ -140,9 +140,12 @@ export interface LoadOptionsFake {
  * An `ILoadOptionsFunctions` stand-in for driving the node's `loadOptions` and
  * `resourceMapping` methods.
  *
- * It implements exactly the four members those methods touch — `getNode`,
- * `getCredentials`, `getNodeParameter`, and `helpers.httpRequest` — behind the
- * same single `as unknown as` cast `createExecuteFunctions` uses above.
+ * It implements exactly the five members those methods touch — `getNode`,
+ * `getCredentials`, `getNodeParameter`, `getCurrentNodeParameter`, and
+ * `helpers.httpRequest` — behind the same single `as unknown as` cast
+ * `createExecuteFunctions` uses above. `getCurrentNodeParameter` reads the same
+ * table, so a sibling in a fixed collection is configured under its relative
+ * name (`&field`).
  *
  * `getNodeParameter` throws for a name the test did not configure, which is
  * what proves `getEntityFields` never reads `operation` before an entity set
@@ -167,6 +170,7 @@ export function createLoadOptionsFunctions(options: LoadOptionsFakeOptions): Loa
 
 			return parameters[name];
 		},
+		getCurrentNodeParameter: (name: string): unknown => parameters[name],
 		helpers: { httpRequest: options.http.httpRequest },
 	};
 

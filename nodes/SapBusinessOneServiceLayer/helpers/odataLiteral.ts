@@ -32,9 +32,24 @@ export function classifyEdmType(edmType: string): OdataLiteralKind {
 }
 
 /**
+ * Formats a raw value as an OData V4 literal for the given kind, without URL
+ * encoding: a string is wrapped in single quotes with an embedded `'` doubled
+ * (`O'Brien` → `'O''Brien'`); numeric and datetime values are trimmed and left
+ * bare. The `$filter` builder uses it directly, because the whole filter is
+ * encoded once when the query string is built (helpers/queryOptions.ts).
+ */
+export function formatODataLiteral(rawValue: string, literalKind: OdataLiteralKind): string {
+	if (literalKind === 'numeric' || literalKind === 'datetime') {
+		return rawValue.trim();
+	}
+
+	return `'${rawValue.replace(/'/g, "''")}'`;
+}
+
+/**
  * Encodes a raw value as an OData V4 literal for the given kind. Used for both
- * entity key segments and bound/unbound operation parameters, so the
- * quoting/escaping rule exists in exactly one place.
+ * entity key segments and bound/unbound operation parameters; the quoting rule
+ * is `formatODataLiteral`'s, so it exists in exactly one place.
  *
  * A string literal is percent-encoded inside its quotes, because the value ends
  * up in a URL path segment. `#` is the clearest case: it starts a URL fragment,
@@ -54,9 +69,7 @@ export function classifyEdmType(edmType: string): OdataLiteralKind {
  * this package cannot verify (no observed entity set has a datetime key).
  */
 export function encodeODataLiteral(rawValue: string, literalKind: OdataLiteralKind): string {
-	if (literalKind === 'numeric' || literalKind === 'datetime') {
-		return rawValue.trim();
-	}
+	const literal = formatODataLiteral(rawValue, literalKind);
 
-	return `'${encodeURIComponent(rawValue.replace(/'/g, "''"))}'`;
+	return literalKind === 'string' ? encodeURIComponent(literal) : literal;
 }

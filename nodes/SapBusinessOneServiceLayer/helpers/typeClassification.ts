@@ -49,3 +49,16 @@ export function classifyServiceLayerType(
 
 	return { category: 'unknown', isCollection, typeName };
 }
+
+/**
+ * True for a property holding one primitive or enum value, the only kind that
+ * can be sorted (`$orderby`) or compared in a `$filter`. Collections, complex
+ * and entity types, and undeclared types are not.
+ */
+export function isSingleValueType(edmType: string, metadata: TypeRegistry): boolean {
+	const typeInfo = classifyServiceLayerType(edmType, metadata);
+
+	return (
+		!typeInfo.isCollection && (typeInfo.category === 'primitive' || typeInfo.category === 'enum')
+	);
+}

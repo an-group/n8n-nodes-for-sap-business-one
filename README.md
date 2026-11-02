@@ -147,7 +147,7 @@ The node exposes a **Resource** selector with three values: **Entity Set**, **Se
 **Entity Set** authenticates, fetches and parses the connected instance's Service Layer metadata (`/$metadata`), and lets you pick an entity set (for example `BusinessPartners`, `Orders`, `Items`) from a dynamic, metadata-driven list. Its **Operation** supports:
 
 - **Get** — fetch a single entity by its key, optionally only some of its fields
-- **Get Many** — fetch a collection, with `Return All`/`Limit`, and optionally fields, a filter, and a sort order
+- **Get Many** — fetch a collection, with `Return All`/`Limit`, and optionally a filter (built from conditions or entered as an OData string), fields, and a sort order
 - **Create** — create an entity
 - **Update** — update an entity by its key
 - **Delete** — delete an entity by its key
@@ -159,7 +159,7 @@ The node exposes a **Resource** selector with three values: **Entity Set**, **Se
 
 The following are planned for later releases:
 
-- A guided filter for Get Many, and the `$expand` query option
+- The `$expand` query option
 - Structured SAP Business One error handling
 - Webhook and event integration
 
@@ -176,10 +176,15 @@ These are planned and not yet available in the current development version.
   - a single complex property (`AddressExtension`) is merged field by field: sub-fields not sent keep their value
 
   To replace collections instead, turn on **Replace Collections**. Update then sends the `B1S-ReplaceCollectionsOnPatch: true` request header, and the lines sent replace the existing ones — observed live both with and without other properties in the same update.
-- **Options** (Get, Get Many) — query options sent with the request:
+- **Filter** (Get Many) — which entities are returned (`$filter`). One of:
+  - **None** (the default) — no filter; all entities are returned.
+  - **Build Manually** — a **Must Match** setting and a list of **Conditions**. Must Match decides whether all conditions must be met (**All Conditions**, AND, the default) or at least one (**Any Condition**, OR); it applies to the whole list. Each condition has a field, an operator, and a value. Only fields holding a single value are offered; collections such as `DocumentLines` are not. The operators follow the field's type from the metadata, the way n8n's Data Table node offers them: text fields get Equal, Not Equal, Greater Than, Greater Than or Equal, Less Than, Less Than or Equal, Contains, Starts With, Ends With and their negations (Not Contains, …), and Is Empty / Is Not Empty (`eq null` / `ne null`); number, date, and time fields the comparisons and the empty checks; enum and boolean fields Equal, Not Equal, and the empty checks only — on an enum the string functions would silently match nothing. The value input follows the field's type too: enum fields such as `ItemType` get a dropdown of their members, date fields a date picker, all others a text input (times as `08:00:00`). Values are entered without quotes; the node quotes them by the field's type, never by how the value looks: strings, enum values, dates, and times in single quotes (a `CardCode` of `10001` stays a string), numbers bare and never in exponent form (`1.5e3` is sent as `1500`). A value that is not a number on a number field, and Contains, Starts With, or Ends With on an enum field given by expression, are rejected before any request is sent. Verified live: Contains, Starts With, and Ends With are case-sensitive, and dates are compared by day only — the time and time zone of `2026-02-25T10:00:00+01:00` are ignored.
+  - **OData String** — a `$filter` expression in **Filter (OData)**, sent as entered, for example `DocTotal gt 1000 and startswith(CardCode,'C')`. Use it for mixed AND/OR and grouping, for example `(CardType eq 'cCustomer' or CardType eq 'cLid') and CurrentAccountBalance gt 1000`. Strings and enum values go in single quotes (`CardType eq 'cCustomer'`), with a quote inside doubled (`'O''Brien'`); numbers go without (`DocTotal gt '1000'` is rejected). Dates work quoted (`DocDate ge '2026-01-01'`). Supported: `eq`, `ne`, `gt`, `ge`, `lt`, `le`, `and`, `or`, `not`, parentheses, `contains`, `startswith`, `endswith`; see [Query Options](https://help.sap.com/docs/SAP_BUSINESS_ONE/f110a154dd0f4c20bf7f3ebca9eeb794/3e5b7d980d99493f9271847450a927ef.html) in the SAP Business One Service Layer documentation. The expression is not checked by the node; a mistake fails with the Service Layer's own message.
+
+  Only the chosen mode is sent: conditions or a string left over from switching modes, hidden in the editor, are ignored.
+- **Options** (Get, Get Many):
   - **Select Field Names or IDs** (`$select`) — return only these properties, picked from the metadata. Collections and complex properties such as `DocumentLines` can be picked too and come back in full. Without a choice, all properties are returned. An expression may give a list or a comma-separated string. The Service Layer still adds `@odata.etag` to each row.
-  - **Filter** (`$filter`, Get Many only) — an OData filter expression, sent as entered, for example `DocTotal gt 1000 and startswith(CardCode,'C')`. Strings and enum values go in single quotes (`CardType eq 'cCustomer'`), with a quote inside doubled (`'O''Brien'`); numbers go without (`DocTotal gt '1000'` is rejected). Dates work quoted (`DocDate ge '2026-01-01'`). Supported: `eq`, `ne`, `gt`, `ge`, `lt`, `le`, `and`, `or`, `not`, parentheses, `contains`, `startswith`, `endswith`. The expression is not checked by the node; a mistake fails with the Service Layer's own message.
-  - **Sort** (`$orderby`, Get Many only) — one or more fields with a direction, applied in the order given. Only single-value properties are offered.
+- **Sort** (Get Many) — one or more fields with a direction (`$orderby`), applied in the order given. Only single-value properties are offered. Like n8n's own nodes (Airtable Search), Sort is its own list below Options.
 
   Values are percent-encoded, so `&`, `#`, and `%` inside a filter value are safe. For `$expand`, `$apply` (aggregation, grouping), or `$crossjoin`, use **Custom API Call**.
 - **Get Many** pagination — the Service Layer defaults to 20 rows per page regardless of how many match. `Get Many` requests the page size it actually needs (`Limit`, or unlimited for `Return All`) via the `Prefer: odata.maxpagesize` request header, which normally returns everything in a single request; the server's own pagination (`@odata.nextLink`) is still followed as a fallback if a very large result is nonetheless split across pages. Verified live: the next link keeps `$select`, `$filter`, and `$orderby`, so every page is filtered, reduced, and sorted alike.

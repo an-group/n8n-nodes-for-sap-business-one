@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	classifyEdmType,
 	encodeODataLiteral,
+	formatODataLiteral,
 } from '../nodes/SapBusinessOneServiceLayer/helpers/odataLiteral';
 
 describe('classifyEdmType', () => {
@@ -94,5 +95,28 @@ describe('encodeODataLiteral', () => {
 
 	it('does not trim a string literal, unlike a numeric one', () => {
 		expect(encodeODataLiteral(' AK ', 'string')).toBe("'%20AK%20'");
+	});
+});
+
+describe('formatODataLiteral', () => {
+	it('quotes a string and doubles an embedded quote, without URL encoding', () => {
+		expect(formatODataLiteral("O'Brien #1 & 100%", 'string')).toBe("'O''Brien #1 & 100%'");
+	});
+
+	it('keeps the spaces of a string', () => {
+		expect(formatODataLiteral(' AK ', 'string')).toBe("' AK '");
+	});
+
+	it('trims numeric and datetime values and leaves them bare', () => {
+		expect(formatODataLiteral(' 42 ', 'numeric')).toBe('42');
+		expect(formatODataLiteral(' 2024-01-02 ', 'datetime')).toBe('2024-01-02');
+	});
+
+	it('is what encodeODataLiteral percent-encodes', () => {
+		const raw = "O'Brien#1";
+
+		expect(encodeODataLiteral(raw, 'string')).toBe(
+			encodeURIComponent(formatODataLiteral(raw, 'string')),
+		);
 	});
 });
