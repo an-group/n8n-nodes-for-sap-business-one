@@ -1,0 +1,87 @@
+{
+	"name": "SAP Business One: read open sales orders",
+	"nodes": [
+		{
+			"parameters": {},
+			"id": "ca0048c3-4bd2-483f-98fb-f5c8a26571a7",
+			"name": "When clicking 'Execute workflow'",
+			"type": "n8n-nodes-base.manualTrigger",
+			"typeVersion": 1,
+			"position": [220, 420]
+		},
+		{
+			"parameters": {
+				"resource": "entitySet",
+				"entitySet": {
+					"__rl": true,
+					"mode": "list",
+					"value": "Orders",
+					"cachedResultName": "Orders"
+				},
+				"operation": "getMany",
+				"limit": 10,
+				"select": [
+					"DocEntry",
+					"DocNum",
+					"CardCode",
+					"CardName",
+					"DocDate",
+					"DocTotal",
+					"DocCurrency"
+				],
+				"filterType": "manual",
+				"conditions": {
+					"condition": [
+						{
+							"field": "DocumentStatus|enum|equality",
+							"equalityOperator": "equal",
+							"enumValue": "bost_Open"
+						}
+					]
+				},
+				"sort": {
+					"fields": [
+						{
+							"field": "DocDate",
+							"direction": "desc"
+						}
+					]
+				}
+			},
+			"id": "147665f0-4078-4c4d-bf24-228d8fc56ac3",
+			"name": "Get open sales orders",
+			"type": "n8n-nodes-for-sap-business-one.sapBusinessOneServiceLayer",
+			"typeVersion": 1,
+			"position": [440, 420]
+		},
+		{
+			"parameters": {
+				"content": "## Read open sales orders\nReturns the ten most recent open sales orders, one item per order, with only the fields picked in **Select Field Names or IDs**.\n\nSelect your SAP Business One Service Layer credential in the node, then execute the workflow.",
+				"height": 260,
+				"width": 420
+			},
+			"id": "e6fced6e-3e63-463b-8cb6-99e5fb41e280",
+			"name": "Sticky Note",
+			"type": "n8n-nodes-base.stickyNote",
+			"typeVersion": 1,
+			"position": [-20, 20]
+		}
+	],
+	"connections": {
+		"When clicking 'Execute workflow'": {
+			"main": [
+				[
+					{
+						"node": "Get open sales orders",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"settings": {
+		"executionOrder": "v1"
+	},
+	"pinData": {}
+}

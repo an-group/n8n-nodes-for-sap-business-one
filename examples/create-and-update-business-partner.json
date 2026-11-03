@@ -1,0 +1,296 @@
+{
+	"name": "SAP Business One: create and update a business partner",
+	"nodes": [
+		{
+			"parameters": {},
+			"id": "76f74a94-bd27-4952-8188-0640a021c6fa",
+			"name": "When clicking 'Execute workflow'",
+			"type": "n8n-nodes-base.manualTrigger",
+			"typeVersion": 1,
+			"position": [220, 420]
+		},
+		{
+			"parameters": {
+				"assignments": {
+					"assignments": [
+						{
+							"id": "7341d711-25e5-427d-a964-a39f01ff1512",
+							"name": "CardCode",
+							"value": "C99001",
+							"type": "string"
+						},
+						{
+							"id": "090fe46c-fed0-4224-aeb1-b50fae17f492",
+							"name": "CardName",
+							"value": "Example Customer",
+							"type": "string"
+						},
+						{
+							"id": "60ef7351-e728-4cce-aaf7-fcec752fe21a",
+							"name": "Phone1",
+							"value": "+41 00 000 00 00",
+							"type": "string"
+						},
+						{
+							"id": "3d1f8ee1-6f9a-46fd-848d-8d68d6fbb6fb",
+							"name": "EmailAddress",
+							"value": "info@example.com",
+							"type": "string"
+						}
+					]
+				},
+				"options": {}
+			},
+			"id": "099d6958-4943-4fdd-88db-f286e707bb69",
+			"name": "Business partner data",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.4,
+			"position": [440, 420]
+		},
+		{
+			"parameters": {
+				"resource": "entitySet",
+				"entitySet": {
+					"__rl": true,
+					"mode": "list",
+					"value": "BusinessPartners",
+					"cachedResultName": "BusinessPartners"
+				},
+				"operation": "create",
+				"entityFields": {
+					"mappingMode": "defineBelow",
+					"value": {
+						"CardCode": "={{ $json.CardCode }}",
+						"CardName": "={{ $json.CardName }}",
+						"CardType": "cCustomer"
+					},
+					"matchingColumns": [],
+					"schema": [
+						{
+							"id": "CardCode",
+							"displayName": "BP Code (CardCode)",
+							"type": "string",
+							"required": false,
+							"defaultMatch": false,
+							"canBeUsedToMatch": false,
+							"display": true,
+							"removed": false
+						},
+						{
+							"id": "CardName",
+							"displayName": "BP Name (CardName)",
+							"type": "string",
+							"required": false,
+							"defaultMatch": false,
+							"canBeUsedToMatch": false,
+							"display": true,
+							"removed": false
+						},
+						{
+							"id": "CardType",
+							"displayName": "BP Type (CardType)",
+							"type": "options",
+							"required": false,
+							"defaultMatch": false,
+							"canBeUsedToMatch": false,
+							"display": true,
+							"removed": false,
+							"options": [
+								{
+									"name": "cCustomer",
+									"value": "cCustomer"
+								},
+								{
+									"name": "cSupplier",
+									"value": "cSupplier"
+								},
+								{
+									"name": "cLid",
+									"value": "cLid"
+								}
+							]
+						}
+					],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": true
+				}
+			},
+			"id": "cb93d332-8e74-41dc-9bd5-5b24e01ae4b6",
+			"name": "Create business partner",
+			"type": "n8n-nodes-for-sap-business-one.sapBusinessOneServiceLayer",
+			"typeVersion": 1,
+			"position": [660, 420]
+		},
+		{
+			"parameters": {
+				"resource": "entitySet",
+				"entitySet": {
+					"__rl": true,
+					"mode": "list",
+					"value": "BusinessPartners",
+					"cachedResultName": "BusinessPartners"
+				},
+				"operation": "update",
+				"keyFields": {
+					"mappingMode": "defineBelow",
+					"value": {
+						"CardCode": "={{ $json.CardCode }}"
+					},
+					"matchingColumns": [],
+					"schema": [
+						{
+							"id": "CardCode",
+							"displayName": "BP Code (CardCode)",
+							"type": "string",
+							"required": true,
+							"defaultMatch": true,
+							"canBeUsedToMatch": true,
+							"display": true,
+							"removed": false
+						}
+					],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": true
+				},
+				"entityFields": {
+					"mappingMode": "defineBelow",
+					"value": {
+						"Phone1": "={{ $('Business partner data').item.json.Phone1 }}",
+						"EmailAddress": "={{ $('Business partner data').item.json.EmailAddress }}"
+					},
+					"matchingColumns": [],
+					"schema": [
+						{
+							"id": "Phone1",
+							"displayName": "Telephone 1 (Phone1)",
+							"type": "string",
+							"required": false,
+							"defaultMatch": false,
+							"canBeUsedToMatch": false,
+							"display": true,
+							"removed": false
+						},
+						{
+							"id": "EmailAddress",
+							"displayName": "E-Mail (EmailAddress)",
+							"type": "string",
+							"required": false,
+							"defaultMatch": false,
+							"canBeUsedToMatch": false,
+							"display": true,
+							"removed": false
+						}
+					],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": true
+				}
+			},
+			"id": "b596ebea-a5bf-48ee-836d-5637550335f0",
+			"name": "Add contact details",
+			"type": "n8n-nodes-for-sap-business-one.sapBusinessOneServiceLayer",
+			"typeVersion": 1,
+			"position": [880, 420]
+		},
+		{
+			"parameters": {
+				"resource": "entitySet",
+				"entitySet": {
+					"__rl": true,
+					"mode": "list",
+					"value": "BusinessPartners",
+					"cachedResultName": "BusinessPartners"
+				},
+				"operation": "get",
+				"keyFields": {
+					"mappingMode": "defineBelow",
+					"value": {
+						"CardCode": "={{ $('Business partner data').item.json.CardCode }}"
+					},
+					"matchingColumns": [],
+					"schema": [
+						{
+							"id": "CardCode",
+							"displayName": "BP Code (CardCode)",
+							"type": "string",
+							"required": true,
+							"defaultMatch": true,
+							"canBeUsedToMatch": true,
+							"display": true,
+							"removed": false
+						}
+					],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": true
+				},
+				"select": ["CardCode", "CardName", "CardType", "Phone1", "EmailAddress"]
+			},
+			"id": "aa4fae9a-2f63-48bc-ab00-b76e3579f628",
+			"name": "Get business partner",
+			"type": "n8n-nodes-for-sap-business-one.sapBusinessOneServiceLayer",
+			"typeVersion": 1,
+			"position": [1100, 420]
+		},
+		{
+			"parameters": {
+				"content": "## Create and update a business partner\nCreates a customer, adds a phone number and an e-mail address with **Update**, and reads the result back with **Get**.\n\nChange the values in **Business partner data** first: the BP code must not exist yet. Update answers `{ \"success\": true, \"statusCode\": 204 }`, so the later nodes read the BP code from **Business partner data**.",
+				"height": 260,
+				"width": 420
+			},
+			"id": "6886d9a3-f85e-469b-9773-4cf79035f321",
+			"name": "Sticky Note",
+			"type": "n8n-nodes-base.stickyNote",
+			"typeVersion": 1,
+			"position": [-20, 20]
+		}
+	],
+	"connections": {
+		"When clicking 'Execute workflow'": {
+			"main": [
+				[
+					{
+						"node": "Business partner data",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Business partner data": {
+			"main": [
+				[
+					{
+						"node": "Create business partner",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Create business partner": {
+			"main": [
+				[
+					{
+						"node": "Add contact details",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Add contact details": {
+			"main": [
+				[
+					{
+						"node": "Get business partner",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"settings": {
+		"executionOrder": "v1"
+	},
+	"pinData": {}
+}

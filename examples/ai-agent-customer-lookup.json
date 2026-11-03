@@ -1,0 +1,137 @@
+{
+	"name": "SAP Business One: AI agent that looks up customers",
+	"nodes": [
+		{
+			"parameters": {
+				"options": {}
+			},
+			"id": "807e2783-ea18-4ea9-9d6a-1cfdf6328549",
+			"name": "When chat message received",
+			"type": "@n8n/n8n-nodes-langchain.chatTrigger",
+			"typeVersion": 1.1,
+			"position": [224, 432],
+			"webhookId": "ca5be639-ace0-4ecf-bf43-2094a0c6e354"
+		},
+		{
+			"parameters": {
+				"options": {
+					"systemMessage": "You answer questions about customers in SAP Business One. Use the tool to look customers up by name. Answer only from what the tool returns."
+				}
+			},
+			"id": "b38e86e3-a186-45a0-a775-480140b2fee2",
+			"name": "AI Agent",
+			"type": "@n8n/n8n-nodes-langchain.agent",
+			"typeVersion": 2.2,
+			"position": [448, 432]
+		},
+		{
+			"parameters": {
+				"model": {
+					"__rl": true,
+					"mode": "list",
+					"value": "gpt-4.1-mini"
+				},
+				"options": {}
+			},
+			"id": "03f9a6b8-e4e2-4660-bf81-8e252cb2e9c7",
+			"name": "OpenAI Chat Model",
+			"type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+			"typeVersion": 1.2,
+			"position": [352, 640]
+		},
+		{
+			"parameters": {
+				"descriptionType": "manual",
+				"toolDescription": "Finds SAP Business One customers whose name contains a search text. Returns code, name, phone, e-mail, city and account balance of every matching customer.",
+				"resource": "entitySet",
+				"entitySet": {
+					"__rl": true,
+					"mode": "list",
+					"value": "BusinessPartners",
+					"cachedResultName": "BusinessPartners"
+				},
+				"operation": "getMany",
+				"returnAll": true,
+				"select": [
+					"CardCode",
+					"CardName",
+					"Phone1",
+					"EmailAddress",
+					"City",
+					"CurrentAccountBalance"
+				],
+				"filterType": "manual",
+				"conditions": {
+					"condition": [
+						{
+							"field": "CardType|enum|equality",
+							"equalityOperator": "equal",
+							"enumValue": "cCustomer"
+						},
+						{
+							"field": "CardName|text|text",
+							"operator": "contains",
+							"value": "={{ $fromAI('name', 'Part of the customer name to search for', 'string') }}"
+						}
+					]
+				}
+			},
+			"id": "f38bbb41-9afb-43ad-bc1b-ae81ce08f7c1",
+			"name": "Find customers",
+			"type": "n8n-nodes-for-sap-business-one.sapBusinessOneServiceLayerTool",
+			"typeVersion": 1,
+			"position": [560, 640]
+		},
+		{
+			"parameters": {
+				"content": "## AI agent that looks up customers\nThe SAP Business One Service Layer node runs as a tool: the agent fills the name filter with `$fromAI()`, the tool returns every matching customer with six fields (Return All). A search text that matches many customers fills the agent's context quickly; turn Return All off and set a Limit if that happens. The tool can only read; keep the SAP user's permissions narrow anyway.\n\nSelect an OpenAI credential (or replace the chat model) and your Service Layer credential, then open the chat and ask, for example:\n\n> Which customers have \"Star\" in their name, and what is their balance?",
+				"height": 320,
+				"width": 420
+			},
+			"id": "76e49c30-6815-4704-ac47-0b56a51ee955",
+			"name": "Sticky Note",
+			"type": "n8n-nodes-base.stickyNote",
+			"typeVersion": 1,
+			"position": [-16, 32]
+		}
+	],
+	"connections": {
+		"When chat message received": {
+			"main": [
+				[
+					{
+						"node": "AI Agent",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"OpenAI Chat Model": {
+			"ai_languageModel": [
+				[
+					{
+						"node": "AI Agent",
+						"type": "ai_languageModel",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Find customers": {
+			"ai_tool": [
+				[
+					{
+						"node": "AI Agent",
+						"type": "ai_tool",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"settings": {
+		"executionOrder": "v1"
+	},
+	"pinData": {}
+}
