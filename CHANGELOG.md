@@ -11,7 +11,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/2.0.0/),
 ### Changed
 
 - The npm package no longer contains the TypeScript build info file (`dist/tsconfig.tsbuildinfo`), which made up about half of its unpacked size.
-- Releases are published from GitHub Actions through npm Trusted Publishing, without a stored npm token.
 
 ### Fixed
 
