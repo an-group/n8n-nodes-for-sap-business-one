@@ -2,7 +2,7 @@ import { NodeApiError, NodeOperationError } from 'n8n-workflow';
 import type { ResourceMapperField } from 'n8n-workflow';
 import { describe, expect, it } from 'vitest';
 
-import { getEntitySets } from '../nodes/SapBusinessOneServiceLayer/methods/loadOptions';
+import { searchEntitySets } from '../nodes/SapBusinessOneServiceLayer/methods/listSearch';
 import {
 	getBoundOperationParameters,
 	getEntityFields,
@@ -340,7 +340,7 @@ describe('metadata reuse across the node methods', () => {
 			parameters: { entitySet: 'Orders', operation: 'create' },
 		});
 
-		await getEntitySets.call(context);
+		await searchEntitySets.call(context);
 		await getEntityKeys.call(context);
 		await getEntityFields.call(context);
 

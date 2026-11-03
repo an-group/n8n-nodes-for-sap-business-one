@@ -144,7 +144,7 @@ Test data must be synthetic. Use the `createTestCredentials()` factory in `test/
 
 The node exposes a **Resource** selector with three values: **Entity Set**, **Service Operation**, and **Custom API Call**.
 
-**Entity Set** authenticates, fetches and parses the connected instance's Service Layer metadata (`/$metadata`), and lets you pick an entity set (for example `BusinessPartners`, `Orders`, `Items`) from a dynamic, metadata-driven list. Its **Operation** supports:
+**Entity Set** authenticates, fetches and parses the connected instance's Service Layer metadata (`/$metadata`), and lets you pick an entity set (for example `BusinessPartners`, `Orders`, `Items`) from a searchable, metadata-driven list (**From List**, the default) or enter its name (**By Name**, also as an expression). Its **Operation** supports:
 
 - **Get** — fetch a single entity by its key, optionally only some of its fields
 - **Get Many** — fetch a collection, with `Return All`/`Limit`, and optionally a filter (built from conditions or entered as an OData string), fields, and a sort order
@@ -153,9 +153,11 @@ The node exposes a **Resource** selector with three values: **Entity Set**, **Se
 - **Delete** — delete an entity by its key; each deleted entity returns `{ "deleted": true }`
 - **Execute Action or Function** — call an Action or Function bound to one entity, for example closing an order (`Orders(45)/Close`)
 
-**Custom API Call** sends a request to any Service Layer endpoint you enter yourself, reusing the credential and session handling described below. See [Custom API Call](#custom-api-call).
+**Custom API Call** sends a request to any Service Layer endpoint you enter yourself, reusing the credential and session handling described below. Its only operation is **Send Request**. See [Custom API Call](#custom-api-call).
 
-**Service Operation** calls an unbound Service Layer Action or Function (for example `CompanyService_GetCompanyInfo`) picked from the connected instance's metadata. See [Service Operation](#service-operation).
+**Service Operation** calls an unbound Service Layer Action or Function (for example `CompanyService_GetCompanyInfo`) picked from the connected instance's metadata. Its only operation is **Call**. See [Service Operation](#service-operation).
+
+In n8n's nodes panel every operation appears as an action, grouped by resource: the six Entity Set actions (for example **Get many entities**), **Call service operation**, and **Send custom API request**.
 
 The following are planned for later releases:
 
@@ -193,7 +195,7 @@ These are planned and not yet available in the current development version.
 
 Calls an Action or Function bound to one entity of the selected entity set, identified through **Key Fields** (simple and composite keys).
 
-- **Action or Function** — a metadata-driven list of the operations bound to the selected entity set's entity type, with the kind in the label, for example `Close (Action)` or `List (Function)`. Names such as `Close` exist for many entity types; the list only offers the selected one's own.
+- **Action or Function** — a searchable, metadata-driven list of the operations bound to the selected entity set's entity type, with the kind in the label, for example `Close (Action)` or `List (Function)`. Names such as `Close` exist for many entity types; the list only offers the selected one's own. **By Name** takes the bare name instead, for example `Close`.
 - **Parameters** — the operation's parameters, handled exactly as for [Service Operation](#service-operation). Almost every bound operation takes none; the mapper then says so.
 
 Actions are sent as `POST /<EntitySet>(<key>)/<Action>`, with the parameters as a JSON body or no body when there are none. Functions are sent as `GET /<EntitySet>(<key>)/<Function>` without parentheses, with their parameters as query options written as OData literals (`?Name=value`): the Service Layer rejects bound function calls with parentheses.
@@ -206,7 +208,7 @@ The output follows the Custom API Call convention.
 
 Calls an unbound Action or Function from the connected instance's metadata, without building the URL or request body yourself. Requests go through the same authenticated request layer as the other resources.
 
-- **Service Operation** — a metadata-driven list of every unbound Action and Function. The label shows the kind, for example `CompanyService_GetCompanyInfo (Function)` or `QueryService_PostQuery (Action)`; the node picks the HTTP method from it.
+- **Service Operation** — a searchable, metadata-driven list of every unbound Action and Function. The label shows the kind, for example `CompanyService_GetCompanyInfo (Function)` or `QueryService_PostQuery (Action)`, and the search matches it too; the node picks the HTTP method from the metadata. **By Name** takes the bare name instead, for example `CompanyService_GetCompanyInfo`.
 - **Parameters** — a metadata-driven field mapper for the selected operation's parameters. Most Actions take exactly one complex or entity parameter, for example `SeriesService_GetDocumentSeries(DocumentTypeParams)` or `…_ApproveAndAdd(Document)`. For these, the mapper lists that type's properties as individual fields, handled like the **Fields** of Create: simple properties get a field of the matching type, enum properties a dropdown of their members, time-of-day properties a time field, nested complex properties a JSON object field and collection properties a JSON array field. The values are sent wrapped under the parameter name, for example `{ "DocumentTypeParams": { "Document": "17" } }` — verified against a live Service Layer. Every other operation gets one field per parameter:
   - simple parameters get a field of the matching type
   - enum parameters get a dropdown of their members
