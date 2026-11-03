@@ -72,7 +72,7 @@ function entitySetParams(
 		replaceCollections: false,
 		filterType: 'none',
 		matchType: 'and',
-		options: {},
+		select: [],
 		sort: {},
 		...extra,
 	};
@@ -208,7 +208,7 @@ describe('Entity Set: query options', () => {
 				limit: 10,
 				filterType: 'odata',
 				odataFilter: "CardCode eq 'C1'",
-				options: { select: ['DocEntry', 'CardCode'] },
+				select: ['DocEntry', 'CardCode'],
 				sort: { fields: [{ field: 'DocEntry', direction: 'desc' }] },
 			}),
 		});
@@ -229,7 +229,7 @@ describe('Entity Set: query options', () => {
 			},
 			parameters: entitySetParams('get', {
 				keyFields: mapperValue({ DocEntry: 45 }),
-				options: { select: ['DocEntry', 'DocumentLines'] },
+				select: ['DocEntry', 'DocumentLines'],
 			}),
 		});
 

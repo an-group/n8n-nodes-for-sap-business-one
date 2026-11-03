@@ -127,10 +127,10 @@ Only the chosen mode is sent: conditions or an expression left over from switchi
 - Supported: `eq`, `ne`, `gt`, `ge`, `lt`, `le`, `and`, `or`, `not`, parentheses, `contains`, `startswith`, `endswith`; see [Query Options](https://help.sap.com/docs/SAP_BUSINESS_ONE/f110a154dd0f4c20bf7f3ebca9eeb794/3e5b7d980d99493f9271847450a927ef.html) in the SAP Business One Service Layer documentation.
 - The node does not check the expression; a mistake fails with the Service Layer's own message.
 
-#### Options and Sort
+#### Select and Sort
 
-- **Options → Select Field Names or IDs** (Get, Get Many) — return only these properties (`$select`), picked from the metadata. Collections and complex properties such as `DocumentLines` can be picked too and come back in full. Without a choice, all properties are returned. An expression may give a list or a comma-separated string. The Service Layer still adds `@odata.etag` to each row.
-- **Sort** (Get Many) — one or more fields with a direction (`$orderby`), applied in the order given. Only single-value properties are offered. Like n8n's own nodes (Airtable Search), Sort is its own list below Options.
+- **Select Field Names or IDs** (Get, Get Many) — return only these properties (`$select`), picked from the metadata. It sits below **Key Fields** on Get and below **Limit** on Get Many. Collections and complex properties such as `DocumentLines` can be picked too and come back in full. Without a choice, all properties are returned, and that is a lot: one order has over 250 fields. Pick only the fields you need. An expression may give a list or a comma-separated string. The Service Layer still adds `@odata.etag` to each row.
+- **Sort** (Get Many) — one or more fields with a direction (`$orderby`), applied in the order given. Only single-value properties are offered. Like n8n's own nodes (Airtable Search), Sort is a list of its own below the other parameters.
 
 Filter, Select, and Sort values are percent-encoded, so `&`, `#`, and `%` inside a filter value are safe. For `$expand`, `$apply` (aggregation, grouping), or `$crossjoin`, use **Custom API Call**.
 
@@ -236,8 +236,8 @@ Get the ten most recent open sales orders, with only the fields needed.
 
 - **Resource:** Entity Set · **Entity Set:** `Orders` · **Operation:** Get Many
 - **Limit:** `10`
+- **Select Field Names or IDs:** `DocEntry`, `DocNum`, `CardCode`, `DocDate`, `DocTotal`
 - **Filter:** Build Manually, one condition: `DocumentStatus` · Equal · `bost_Open`
-- **Options → Select Field Names or IDs:** `DocEntry`, `DocNum`, `CardCode`, `DocDate`, `DocTotal`
 - **Sort:** `DocDate` · Descending
 
 Request sent:
@@ -336,6 +336,12 @@ The node reads the connected instance's Service Layer metadata (`/$metadata`) ov
 ### Use as an AI tool
 
 The node is `usableAsTool`, so an AI agent given this node can issue any of these operations — including Delete and a Custom API Call with `DELETE` — against any Service Layer endpoint the SAP user is authorised for. Scope the SAP user's permissions accordingly.
+
+Service Layer entities are large, and an agent's context fills quickly: three orders with all their fields come to almost 90,000 characters. When the node runs as a tool:
+
+- set **Select Field Names or IDs** to the fields the agent needs;
+- keep **Limit** small, or let the agent set it with `$fromAI()`;
+- set **Tool Description** to **Set Manually** and name the entity set and what the tool returns, for example "Returns open sales orders with their number, customer, date and total". The automatic description names only the operation, not the entity set.
 
 ## Resources
 
