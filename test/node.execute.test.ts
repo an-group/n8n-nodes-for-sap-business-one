@@ -123,7 +123,7 @@ describe('Entity Set operations', () => {
 		expect(output[0][0].json).toEqual({ DocEntry: 9 });
 	});
 
-	it('patches an entity and reports what it sent', async () => {
+	it('patches an entity and returns the Service Layer answer', async () => {
 		const test = harness({
 			routes: { 'PATCH /Orders(45)': { statusCode: 204, body: '' } },
 			parameters: entitySetParams('update', {
@@ -139,11 +139,24 @@ describe('Entity Set operations', () => {
 		// json is deliberately left at its default so a failed PATCH's error body
 		// still parses; asserting it stays unset locks that decision in.
 		expect(request.json).toBeUndefined();
-		expect(output[0][0].json).toEqual({
-			success: true,
-			entitySet: 'Orders',
-			key: { DocEntry: 45 },
-			CardCode: 'C2',
+		// The node returns the Service Layer's 204, not the key or the fields it sent.
+		expect(output[0][0].json).toEqual({ success: true, statusCode: 204 });
+	});
+
+	it('passes an object answer to an update through unchanged', async () => {
+		const test = harness({
+			routes: { 'PATCH /Orders(45)': { statusCode: 200, body: { DocEntry: 45, CardCode: 'C2' } } },
+			parameters: entitySetParams('update', {
+				keyFields: mapperValue({ DocEntry: 45 }),
+				entityFields: mapperValue({ CardCode: 'C2' }),
+			}),
+		});
+
+		const output = await test.run();
+
+		expect(output[0][0]).toEqual({
+			json: { DocEntry: 45, CardCode: 'C2' },
+			pairedItem: { item: 0 },
 		});
 	});
 
@@ -478,7 +491,7 @@ describe('Entity Set: complex and collection fields', () => {
 		});
 	});
 
-	it('patches lines and reports the parsed body it sent', async () => {
+	it('patches lines and sends the parsed body', async () => {
 		const test = harness({
 			routes: { ...STRUCTURED_METADATA, 'PATCH /Orders(45)': { statusCode: 204, body: '' } },
 			parameters: entitySetParams('update', {
@@ -496,13 +509,7 @@ describe('Entity Set: complex and collection fields', () => {
 			CardCode: 'C2',
 			DocumentLines: [{ LineNum: 0, Quantity: 5 }],
 		});
-		expect(output[0][0].json).toEqual({
-			success: true,
-			entitySet: 'Orders',
-			key: { DocEntry: 45 },
-			CardCode: 'C2',
-			DocumentLines: [{ LineNum: 0, Quantity: 5 }],
-		});
+		expect(output[0][0].json).toEqual({ success: true, statusCode: 204 });
 	});
 
 	it('leaves out a structured field that is empty at runtime, but sends an empty primitive', async () => {

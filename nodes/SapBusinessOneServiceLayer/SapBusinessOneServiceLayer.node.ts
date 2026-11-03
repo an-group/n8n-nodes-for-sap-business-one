@@ -13,7 +13,11 @@ import {
 	SERVICE_LAYER_CREDENTIAL_NAME,
 	getServiceLayerCredentials,
 } from './helpers/credentials';
-import { CUSTOM_API_CALL_BODY_METHODS, executeCustomApiCall } from './helpers/customApiCall';
+import {
+	CUSTOM_API_CALL_BODY_METHODS,
+	executeCustomApiCall,
+	toCustomApiCallOutput,
+} from './helpers/customApiCall';
 import { buildEntityBody } from './helpers/entityBody';
 import { buildEntityKeySegment } from './helpers/entityPath';
 import { buildFilterExpression } from './helpers/filterExpression';
@@ -1039,7 +1043,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 					// throwing, and json: false would also skip parsing a failed PATCH's error
 					// body, losing the real SAP error message/code (confirmed against a live
 					// instance — see sanitizeServiceLayerError in helpers/session.ts).
-					await serviceLayerApiRequest.call(this, credentials, credentialId, {
+					const response = await serviceLayerApiRequest.call(this, credentials, credentialId, {
 						url: `/${keySegment}`,
 						method: 'PATCH',
 						body: fieldValues,
@@ -1048,13 +1052,11 @@ export class SapBusinessOneServiceLayer implements INodeType {
 						...(replaceCollections ? { headers: { 'B1S-ReplaceCollectionsOnPatch': 'true' } } : {}),
 					});
 
+					// Return the Service Layer's answer as the other operations do: the 204
+					// becomes { success: true, statusCode: 204 }. Key and field values stay
+					// reachable through the paired input item.
 					returnData.push({
-						json: {
-							success: true,
-							entitySet: entitySetName,
-							key: keyValues,
-							...fieldValues,
-						},
+						json: toCustomApiCallOutput(response.body, response.statusCode),
 						pairedItem: { item: itemIndex },
 					});
 					continue;
