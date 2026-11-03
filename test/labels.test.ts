@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { settleBackgroundChecks } from '../nodes/SapBusinessOneServiceLayer/helpers/backgroundCheck';
 import {
+	compareLabels,
 	formatLabel,
 	getEntitySetLabels,
 	getPropertyLabels,
@@ -132,6 +133,33 @@ describe('formatLabel', () => {
 
 	it('falls back to the technical name when there is no label', () => {
 		expect(formatLabel('Orders', labels)).toBe('Orders');
+	});
+});
+
+describe('compareLabels', () => {
+	it('sorts alphabetically, puts texts that do not start with a letter last and compares numbers as numbers', () => {
+		const texts = [
+			'1099 Box (Box1099)',
+			'Zone 10 (Tags)',
+			'#740 (Messages)',
+			'347 Operation Code (OperationCode347)',
+			'business Partners (BusinessPartners)',
+			'Änderungsprotokoll (ChangeLogs)',
+			'Zone 9 (Mystery)',
+			'Account Balance (CurrentAccountBalance)',
+		];
+
+		expect([...texts].sort(compareLabels)).toEqual([
+			'Account Balance (CurrentAccountBalance)',
+			// A letter with an accent is a letter: sorted with A, not moved to the end.
+			'Änderungsprotokoll (ChangeLogs)',
+			'business Partners (BusinessPartners)',
+			'Zone 9 (Mystery)',
+			'Zone 10 (Tags)',
+			'#740 (Messages)',
+			'347 Operation Code (OperationCode347)',
+			'1099 Box (Box1099)',
+		]);
 	});
 });
 

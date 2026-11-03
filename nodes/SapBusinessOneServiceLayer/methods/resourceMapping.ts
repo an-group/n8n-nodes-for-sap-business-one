@@ -6,7 +6,7 @@ import type {
 
 import { loadPropertyLabels, loadServiceLayerMetadata } from '../helpers/credentials';
 import { getEntityPropertyShape } from '../helpers/entityBody';
-import { formatLabel, type LabelMap } from '../helpers/labels';
+import { compareLabels, formatLabel, type LabelMap } from '../helpers/labels';
 import { getLocatorValue, getSelectedEntitySetName } from '../helpers/locator';
 import { classifyEdmType } from '../helpers/odataLiteral';
 import { getExpandedParameter, getOperationParameterShape } from '../helpers/serviceOperation';
@@ -100,7 +100,8 @@ async function getSelectedEntityWithMetadata(
  * Navigation properties are not parsed and never offered.
  *
  * Each field is shown with its SAP label, as `BP Code (CardCode)`; its `id`,
- * the key the request is built from, stays the technical name.
+ * the key the request is built from, stays the technical name. The fields
+ * are sorted by that shown name.
  *
  * Key properties are included for Create (some entity sets require a
  * user-supplied key, e.g. `CardCode`; others are server-assigned, e.g.
@@ -141,27 +142,34 @@ export async function getEntityFields(this: ILoadOptionsFunctions): Promise<Reso
  * `getEntityPropertyShape`; enum properties a dropdown, see
  * `getSingleValueField`. A property is shown with its label when `labels`
  * has one; the properties of an operation's expanded parameter have none.
+ *
+ * The fields are sorted by the name the editor shows: n8n lists them in the
+ * "Add field" dropdown in exactly this order, and the metadata order of an
+ * entity with hundreds of properties is no help when looking for one. See
+ * `compareLabels` for the order.
  */
 function getPropertyFields(
 	properties: EntityPropertyDefinition[],
 	metadata: ServiceLayerMetadata,
 	labels: LabelMap = new Map(),
 ): ResourceMapperField[] {
-	return properties.map((property) => {
-		const shape = getEntityPropertyShape(property.edmType, metadata);
+	return properties
+		.map((property): ResourceMapperField => {
+			const shape = getEntityPropertyShape(property.edmType, metadata);
 
-		return {
-			id: property.name,
-			displayName: formatLabel(property.name, labels),
-			...(shape === 'primitive'
-				? getSingleValueField(property.edmType, metadata)
-				: { type: shape }),
-			required: false,
-			defaultMatch: false,
-			canBeUsedToMatch: false,
-			display: true,
-		};
-	});
+			return {
+				id: property.name,
+				displayName: formatLabel(property.name, labels),
+				...(shape === 'primitive'
+					? getSingleValueField(property.edmType, metadata)
+					: { type: shape }),
+				required: false,
+				defaultMatch: false,
+				canBeUsedToMatch: false,
+				display: true,
+			};
+		})
+		.sort((a, b) => compareLabels(a.displayName, b.displayName));
 }
 
 /**
@@ -203,7 +211,8 @@ export async function getEntityKeys(this: ILoadOptionsFunctions): Promise<Resour
 /**
  * One mapper field per operation parameter. Simple parameters get a field of
  * the matching type, enum parameters a dropdown; complex and collection
- * parameters get a JSON editor (`object`/`array`).
+ * parameters get a JSON editor (`object`/`array`). They keep the order of the
+ * operation's signature, unlike the alphabetical `getPropertyFields`.
  *
  * No field is marked `required`: the Service Layer's metadata marks no
  * Action or Function parameter as non-nullable, so required-ness cannot be

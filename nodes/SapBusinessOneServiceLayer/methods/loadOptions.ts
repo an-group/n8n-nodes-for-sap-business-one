@@ -7,7 +7,7 @@ import {
 	getConditionValueKind,
 	getEnumMemberNames,
 } from '../helpers/filterExpression';
-import { formatLabel, type LabelMap } from '../helpers/labels';
+import { compareLabels, formatLabel, type LabelMap } from '../helpers/labels';
 import { getSelectedEntitySetName } from '../helpers/locator';
 import { isSingleValueType } from '../helpers/typeClassification';
 import type { EntityDefinition, EntityPropertyDefinition } from '../helpers/types';
@@ -158,5 +158,5 @@ function toFieldOptions(
 ): INodePropertyOptions[] {
 	return properties
 		.map((property) => ({ name: formatLabel(property.name, labels), value: property.name }))
-		.sort((a, b) => a.name.localeCompare(b.name));
+		.sort((a, b) => compareLabels(a.name, b.name));
 }

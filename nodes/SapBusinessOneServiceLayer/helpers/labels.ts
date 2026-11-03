@@ -215,6 +215,25 @@ export function formatLabel(name: string, labels: LabelMap): string {
 	return label === undefined || label === name ? name : `${label} (${name})`;
 }
 
+const STARTS_WITH_LETTER = /^\p{L}/u;
+
+/**
+ * Sort order for the texts `formatLabel` produces: alphabetical, with the texts
+ * that do not start with a letter (SAP labels such as `1099 Box` or `#740`)
+ * after all others, so a list opens on the entries people look for. Digits
+ * compare as numbers: `347 …` before `1099 …`, `Zone 9` before `Zone 10`.
+ */
+export function compareLabels(a: string, b: string): number {
+	const aLast = !STARTS_WITH_LETTER.test(a);
+	const bLast = !STARTS_WITH_LETTER.test(b);
+
+	if (aLast !== bLast) {
+		return aLast ? 1 : -1;
+	}
+
+	return a.localeCompare(b, undefined, { numeric: true });
+}
+
 /**
  * Fetches one label document, or returns `undefined` when the request fails
  * or the answer is not text. Labels only help to find a name, so a list must
