@@ -1048,7 +1048,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 						method: 'PATCH',
 						body: fieldValues,
 						// Without it the Service Layer merges collections into the existing
-						// lines (see README, "Update and collections").
+						// lines (see docs/operations.md, "Update and collections").
 						...(replaceCollections ? { headers: { 'B1S-ReplaceCollectionsOnPatch': 'true' } } : {}),
 					});
 
