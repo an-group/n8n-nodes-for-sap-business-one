@@ -65,7 +65,7 @@ The lists show the SAP Business One labels next to the technical names, as `Labe
 | **Get** | fetch one entity by its key, optionally only some of its fields |
 | **Get Many** | fetch a collection, with `Return All`/`Limit`, and optionally a filter, a field selection, and a sort order |
 | **Create** | create an entity |
-| **Update** | update an entity by its key |
+| **Update** | update an entity by its key; returns the Service Layer answer, `{ "success": true, "statusCode": 204 }` for a successful update. The key and the fields sent stay available from the input item, for example `$('Previous Node').item.json` |
 | **Delete** | delete an entity by its key; each deleted entity returns `{ "deleted": true }` |
 | **Execute Action or Function** | call an action or function bound to one entity, for example closing an order (`Orders(45)/Close`) |
 
