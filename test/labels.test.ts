@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { settleBackgroundChecks } from '../nodes/SapBusinessOneServiceLayer/helpers/backgroundCheck';
 import {
 	formatLabel,
 	getEntitySetLabels,
@@ -174,19 +175,20 @@ describe('getEntitySetLabels', () => {
 		expect(test.http.countFor(ENTITY_SET_LABELS_ROUTE)).toBe(1);
 	});
 
-	it('fetches again once the cached labels are older than an hour', async () => {
+	it('answers from the cache after an hour too, and checks once in the background', async () => {
 		const test = scenario({
 			[ENTITY_SET_LABELS_ROUTE]: { statusCode: 200, body: ENTITY_SET_LABELS_ANNOTATED },
 		});
 		const start = Date.now();
 		const now = vi.spyOn(Date, 'now').mockReturnValue(start);
 
-		await test.entitySetLabels();
-		now.mockReturnValue(start + 60 * 60 * 1000);
-		await test.entitySetLabels();
+		const first = await test.entitySetLabels();
 		now.mockReturnValue(start + 60 * 60 * 1000 + 1);
+		const later = await test.entitySetLabels();
 		await test.entitySetLabels();
+		await settleBackgroundChecks();
 
+		expect(later).toBe(first);
 		expect(test.http.countFor(ENTITY_SET_LABELS_ROUTE)).toBe(2);
 	});
 
