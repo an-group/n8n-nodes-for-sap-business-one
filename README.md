@@ -6,7 +6,7 @@ This is an n8n community node. It lets you use the SAP Business One Service Laye
 
 [n8n](https://n8n.io/) is a [fair-code licensed](https://docs.n8n.io/sustainable-use-license/) workflow automation platform.
 
-This is an unofficial integration, developed and maintained by [ANG Schweiz AG](https://an-group.one/). It handles authentication, session handling, OData requests, and error handling for you, and reads the connected instance's metadata to offer its entity sets, fields, and operations in the editor.
+This is an unofficial integration, developed and maintained by [ANG Schweiz AG](https://an-group.one/). It handles authentication, session handling, and OData requests for you, and reads the connected instance's metadata to offer its entity sets, fields, and operations in the editor.
 
 ## Project Status
 
@@ -43,7 +43,7 @@ The entity sets, fields, and operations offered in the editor come from the conn
 
 Every operation and its parameters are described in [docs/operations.md](docs/operations.md): key fields, the field mapper, how Update merges collections such as `DocumentLines`, the filter, Select and Sort, pagination, bound and unbound actions and functions, and the Custom API Call.
 
-Planned for later releases:
+Not supported yet:
 
 - The `$expand` query option
 - Structured SAP Business One error handling
@@ -131,7 +131,7 @@ The project uses a closed contribution model: bug reports, feature requests, doc
 
 This project is an independent, unofficial community integration and is not affiliated with, endorsed by, sponsored by, certified by, or otherwise associated with SAP SE, its affiliates, or n8n GmbH.
 
-SAP, SAP Business One, and SAP Crystal Reports are trademarks or registered trademarks of SAP SE or its affiliates in Germany and other countries.
+SAP and SAP Business One are trademarks or registered trademarks of SAP SE or its affiliates in Germany and other countries.
 
 n8n is a trademark of n8n GmbH.
 

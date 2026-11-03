@@ -39,7 +39,7 @@ Do not include real SAP Business One credentials, session cookies, access tokens
 
 The maintainers will make a reasonable effort to:
 
-- Acknowledge the report within five business days
+- Acknowledge the report
 - Confirm whether the issue is within scope
 - Investigate and assess the impact
 - Coordinate remediation and disclosure with the reporter
