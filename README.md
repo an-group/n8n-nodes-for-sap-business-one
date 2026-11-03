@@ -10,9 +10,7 @@ This is an unofficial integration, developed and maintained by [ANG Schweiz AG](
 
 ## Project Status
 
-This project is under active development and has not been released yet. It is not ready for production use.
-
-Node parameters, credential fields, operations, and behavior may change before the first stable release.
+Version 0.1.0 is the first published release. While the version starts with 0.x, node parameters, credential fields, and behavior may still change between minor versions; every change is listed in the [CHANGELOG](CHANGELOG.md). Try write operations on a test company first.
 
 ## Contents
 
@@ -32,7 +30,9 @@ Node parameters, credential fields, operations, and behavior may change before t
 
 Follow the [installation guide](https://docs.n8n.io/integrations/community-nodes/installation/) in the n8n community nodes documentation.
 
-The package is not published on npm yet. Until then, it can only be used from source; see [DEVELOPMENT.md](DEVELOPMENT.md).
+In n8n, go to **Settings → Community Nodes**, select **Install**, and enter `n8n-nodes-for-sap-business-one`.
+
+The package is not verified by n8n yet, so it can be installed on self-hosted n8n only, not on n8n Cloud. To work on the node itself, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Operations
 
@@ -226,7 +226,7 @@ Every credential test opens a real Service Layer session. `/Login` is the only e
 
 Tested with n8n 2.45.7 and SAP Business One 10.0 FP 2608 (version 10.00.340), Service Layer v2. Other versions have not been tested yet.
 
-Only the Service Layer v2 API is supported. A minimum n8n version will be stated before the first stable release.
+Only the Service Layer v2 API is supported. A minimum supported n8n version will be stated with release 1.0.0.
 
 ## Usage
 
