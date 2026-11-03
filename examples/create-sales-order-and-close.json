@@ -1,0 +1,213 @@
+{
+	"name": "SAP Business One: create a sales order with lines and close it",
+	"nodes": [
+		{
+			"parameters": {},
+			"id": "a7eccc3d-6f69-4ad9-a2ae-ec5387c6e0cd",
+			"name": "When clicking 'Execute workflow'",
+			"type": "n8n-nodes-base.manualTrigger",
+			"typeVersion": 1,
+			"position": [220, 420]
+		},
+		{
+			"parameters": {
+				"assignments": {
+					"assignments": [
+						{
+							"id": "d9f0f595-91a0-431d-b5be-8c8786c212dd",
+							"name": "CardCode",
+							"value": "C20000",
+							"type": "string"
+						},
+						{
+							"id": "4ecaa357-f6a6-4dd1-b4bb-11ef7a6622c0",
+							"name": "DocumentLines",
+							"value": "[\n  {\n    \"ItemCode\": \"A00001\",\n    \"Quantity\": 1\n  },\n  {\n    \"ItemCode\": \"A00002\",\n    \"Quantity\": 2\n  },\n  {\n    \"ItemCode\": \"A00003\",\n    \"Quantity\": 3\n  }\n]",
+							"type": "array"
+						}
+					]
+				},
+				"options": {}
+			},
+			"id": "aa79e4ed-c8c2-4c43-857f-5ef37633d025",
+			"name": "Order data",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.4,
+			"position": [440, 420]
+		},
+		{
+			"parameters": {
+				"resource": "entitySet",
+				"entitySet": {
+					"__rl": true,
+					"mode": "list",
+					"value": "Orders",
+					"cachedResultName": "Orders"
+				},
+				"operation": "create",
+				"entityFields": {
+					"mappingMode": "defineBelow",
+					"value": {
+						"CardCode": "={{ $json.CardCode }}",
+						"DocDueDate": "={{ $today.plus({ days: 7 }).toISODate() }}",
+						"Comments": "Created by an n8n example workflow",
+						"DocumentLines": "={{ $json.DocumentLines }}"
+					},
+					"matchingColumns": [],
+					"schema": [
+						{
+							"id": "CardCode",
+							"displayName": "Customer/Vendor Code (CardCode)",
+							"type": "string",
+							"required": false,
+							"defaultMatch": false,
+							"canBeUsedToMatch": false,
+							"display": true,
+							"removed": false
+						},
+						{
+							"id": "DocDueDate",
+							"displayName": "Due Date (DocDueDate)",
+							"type": "dateTime",
+							"required": false,
+							"defaultMatch": false,
+							"canBeUsedToMatch": false,
+							"display": true,
+							"removed": false
+						},
+						{
+							"id": "Comments",
+							"displayName": "Remarks (Comments)",
+							"type": "string",
+							"required": false,
+							"defaultMatch": false,
+							"canBeUsedToMatch": false,
+							"display": true,
+							"removed": false
+						},
+						{
+							"id": "DocumentLines",
+							"displayName": "Sales Order - Rows (DocumentLines)",
+							"type": "array",
+							"required": false,
+							"defaultMatch": false,
+							"canBeUsedToMatch": false,
+							"display": true,
+							"removed": false
+						}
+					],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": true
+				}
+			},
+			"id": "76e63e9f-a284-4ed4-bd2d-63b31ee38123",
+			"name": "Create sales order",
+			"type": "n8n-nodes-for-sap-business-one.sapBusinessOneServiceLayer",
+			"typeVersion": 1,
+			"position": [660, 420]
+		},
+		{
+			"parameters": {
+				"resource": "entitySet",
+				"entitySet": {
+					"__rl": true,
+					"mode": "list",
+					"value": "Orders",
+					"cachedResultName": "Orders"
+				},
+				"operation": "executeOperation",
+				"boundOperation": {
+					"__rl": true,
+					"mode": "list",
+					"value": "Close",
+					"cachedResultName": "Close (Action)"
+				},
+				"keyFields": {
+					"mappingMode": "defineBelow",
+					"value": {
+						"DocEntry": "={{ $json.DocEntry }}"
+					},
+					"matchingColumns": [],
+					"schema": [
+						{
+							"id": "DocEntry",
+							"displayName": "Internal Number (DocEntry)",
+							"type": "number",
+							"required": true,
+							"defaultMatch": true,
+							"canBeUsedToMatch": true,
+							"display": true,
+							"removed": false
+						}
+					],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": true
+				},
+				"boundOperationParameters": {
+					"mappingMode": "defineBelow",
+					"value": {},
+					"matchingColumns": [],
+					"schema": [],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": true
+				}
+			},
+			"id": "89b89f9d-191d-4e99-9dae-bcaf8341d1eb",
+			"name": "Close sales order",
+			"type": "n8n-nodes-for-sap-business-one.sapBusinessOneServiceLayer",
+			"typeVersion": 1,
+			"position": [880, 420]
+		},
+		{
+			"parameters": {
+				"content": "## Create a sales order and close it\nCreates a sales order with three lines, then closes it with the bound action **Close**, using the `DocEntry` the create returned.\n\nThe lines are one JSON array in **Order data**, passed to the **DocumentLines** field as is. Add or remove entries there; any line field of SAP Business One (`Price`, `WarehouseCode`, …) can go into an entry. When the lines arrive as one item each, combine them first with an **Aggregate** node.\n\nSet a customer and items of your company in **Order data** first. A closed order stays in the database; use a test company.",
+				"height": 260,
+				"width": 420
+			},
+			"id": "f98d36b0-f0d1-4d68-a2f1-ffecb3a4b4ca",
+			"name": "Sticky Note",
+			"type": "n8n-nodes-base.stickyNote",
+			"typeVersion": 1,
+			"position": [-20, 20]
+		}
+	],
+	"connections": {
+		"When clicking 'Execute workflow'": {
+			"main": [
+				[
+					{
+						"node": "Order data",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Order data": {
+			"main": [
+				[
+					{
+						"node": "Create sales order",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Create sales order": {
+			"main": [
+				[
+					{
+						"node": "Close sales order",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"settings": {
+		"executionOrder": "v1"
+	},
+	"pinData": {}
+}

@@ -232,6 +232,20 @@ Only the Service Layer v2 API is supported. A minimum n8n version will be stated
 
 The values below are examples; the field names are those of the standard SAP Business One metadata.
 
+#### Importable workflows
+
+The [`examples`](examples) folder holds workflows to import into n8n (**Import from File** in the workflow menu, or paste the file's content onto the canvas). After the import, select your Service Layer credential in each SAP Business One node.
+
+| File | What it shows |
+| --- | --- |
+| [`read-open-sales-orders.json`](examples/read-open-sales-orders.json) | Get Many with a manual filter, Select and Sort: the ten most recent open sales orders |
+| [`create-and-update-business-partner.json`](examples/create-and-update-business-partner.json) | Create, Update and Get of a customer, with values from an Edit Fields node |
+| [`create-sales-order-and-close.json`](examples/create-sales-order-and-close.json) | Create a sales order with three lines in `DocumentLines`, then the bound action `Close` |
+| [`get-company-currencies.json`](examples/get-company-currencies.json) | Two unbound service operations without parameters |
+| [`ai-agent-customer-lookup.json`](examples/ai-agent-customer-lookup.json) | The node as an AI agent tool, with `$fromAI()` in the filter and Select |
+
+The sample values (`C20000`, `A00001` to `A00003`) are those of the SAP Business One demo company; replace them with codes of your company. The workflows that write create a business partner and a sales order, so run them against a test company.
+
 #### Read open orders
 
 Get the ten most recent open sales orders, with only the fields needed.

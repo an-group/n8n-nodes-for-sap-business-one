@@ -1,0 +1,101 @@
+{
+	"name": "SAP Business One: get the system and local currency",
+	"nodes": [
+		{
+			"parameters": {},
+			"id": "4a5a0750-8ef9-4731-b830-7fe96ddfeeef",
+			"name": "When clicking 'Execute workflow'",
+			"type": "n8n-nodes-base.manualTrigger",
+			"typeVersion": 1,
+			"position": [220, 420]
+		},
+		{
+			"parameters": {
+				"resource": "serviceOperation",
+				"serviceOperation": {
+					"__rl": true,
+					"mode": "list",
+					"value": "SBOBobService_GetSystemCurrency",
+					"cachedResultName": "SBOBobService_GetSystemCurrency (Function)"
+				},
+				"operationParameters": {
+					"mappingMode": "defineBelow",
+					"value": {},
+					"matchingColumns": [],
+					"schema": [],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": true
+				}
+			},
+			"id": "699713bd-2eff-4586-b1f7-6824487cf24c",
+			"name": "Get system currency",
+			"type": "n8n-nodes-for-sap-business-one.sapBusinessOneServiceLayer",
+			"typeVersion": 1,
+			"position": [440, 420]
+		},
+		{
+			"parameters": {
+				"resource": "serviceOperation",
+				"serviceOperation": {
+					"__rl": true,
+					"mode": "list",
+					"value": "SBOBobService_GetLocalCurrency",
+					"cachedResultName": "SBOBobService_GetLocalCurrency (Function)"
+				},
+				"operationParameters": {
+					"mappingMode": "defineBelow",
+					"value": {},
+					"matchingColumns": [],
+					"schema": [],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": true
+				}
+			},
+			"id": "3c4d1727-94d9-40ed-8c5a-7e4a1a4e338b",
+			"name": "Get local currency",
+			"type": "n8n-nodes-for-sap-business-one.sapBusinessOneServiceLayer",
+			"typeVersion": 1,
+			"position": [660, 420]
+		},
+		{
+			"parameters": {
+				"content": "## Get the system and local currency\nCalls two unbound service operations without parameters, **SBOBobService_GetSystemCurrency** and **SBOBobService_GetLocalCurrency**. Each returns one item with the currency code.",
+				"height": 260,
+				"width": 420
+			},
+			"id": "8b21ab93-baac-440c-9ec1-ad3713952ae3",
+			"name": "Sticky Note",
+			"type": "n8n-nodes-base.stickyNote",
+			"typeVersion": 1,
+			"position": [-20, 20]
+		}
+	],
+	"connections": {
+		"When clicking 'Execute workflow'": {
+			"main": [
+				[
+					{
+						"node": "Get system currency",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Get system currency": {
+			"main": [
+				[
+					{
+						"node": "Get local currency",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"settings": {
+		"executionOrder": "v1"
+	},
+	"pinData": {}
+}
