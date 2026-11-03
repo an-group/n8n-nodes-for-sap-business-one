@@ -476,7 +476,10 @@ export async function getServiceLayerMetadata(
 		} catch {
 			// Never surface the raw XML (customer-specific schema, and 1.6 MB+ in
 			// practice) or the underlying parse error's message.
-			throw new NodeOperationError(this.getNode(), 'Could not parse Service Layer metadata');
+			throw new NodeOperationError(this.getNode(), 'Could not parse Service Layer metadata', {
+				description:
+					"The /$metadata response is not a readable OData metadata document. Check that the credential's 'Base URL' points to the Service Layer itself, not to a proxy or web server in front of it, then run the node again.",
+			});
 		}
 	});
 

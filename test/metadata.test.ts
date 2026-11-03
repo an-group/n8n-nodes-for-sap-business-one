@@ -368,6 +368,7 @@ describe('getServiceLayerMetadata', () => {
 
 		const text = flattenErrorText(error);
 		expect(text).toContain('Could not parse Service Layer metadata');
+		expect(text).toContain("Check that the credential's 'Base URL' points to the Service Layer");
 		expect(text).not.toContain('<EntitySet');
 		expect(text).not.toContain('references an entity type');
 	});

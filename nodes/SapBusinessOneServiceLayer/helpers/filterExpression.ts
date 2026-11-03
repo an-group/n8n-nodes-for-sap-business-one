@@ -11,14 +11,14 @@ type NodeContext = Pick<FunctionsBase, 'getNode'>;
 
 /** The parameters of a Get Many request that make up its `$filter`. */
 export interface FilterInput {
-	/** `Filter`: `none`, `manual` (the Conditions) or `string` (OData text). */
+	/** `Filter`: `none`, `manual` (the Conditions) or `odata` (the OData Expression). */
 	filterType: unknown;
 	/** The `Conditions` fixed collection, read for `manual`. */
 	conditions?: unknown;
 	/** `Must Match`: `and` or `or`, read for `manual`. */
 	matchType?: unknown;
-	/** `Filter (OData)`, sent as entered, read for `string`. */
-	filterString?: unknown;
+	/** `OData Expression`, sent as entered, read for `odata`. */
+	odataFilter?: unknown;
 }
 
 /**
@@ -303,7 +303,7 @@ function resolveProperty(
 			context.getNode(),
 			`${origin}: "${fieldName}" cannot be filtered on`,
 			{
-				description: `Only fields holding a single value can be filtered on. Collections and structured fields such as DocumentLines need the OData String filter.`,
+				description: `Only fields holding a single value can be filtered on. Collections and structured fields such as DocumentLines need the 'OData Expression' filter.`,
 			},
 		);
 	}
@@ -348,8 +348,8 @@ function buildCondition(
 	if (classifyServiceLayerType(property.edmType, metadata).category === 'enum') {
 		throw new NodeOperationError(
 			context.getNode(),
-			`${origin}: Contains, Starts With and Ends With do not work on a dropdown (enum) field`,
-			{ description: 'Use Equal or Not Equal with one of its values instead.' },
+			`${origin}: 'Contains', 'Starts With' and 'Ends With' do not work on a dropdown (enum) field`,
+			{ description: "Use 'Equal' or 'Not Equal' with one of its values instead." },
 		);
 	}
 
@@ -382,8 +382,8 @@ function buildConditions(
 
 /**
  * Builds the `$filter` of a Get Many request. `Filter` picks one source: the
- * `Conditions` (`manual`), joined by `Must Match`, or the `Filter (OData)`
- * text (`string`), sent as entered. The two are never combined, so an input
+ * `Conditions` (`manual`), joined by `Must Match`, or the `OData Expression`
+ * text (`odata`), sent as entered. The two are never combined, so an input
  * left over from switching modes, hidden in the editor, is not sent. `none`
  * and an unknown mode send no filter.
  *
@@ -400,8 +400,8 @@ export function buildFilterExpression(
 		return buildConditions(context, entity, metadata, input.conditions, input.matchType);
 	}
 
-	if (input.filterType === 'string') {
-		return typeof input.filterString === 'string' ? input.filterString.trim() : '';
+	if (input.filterType === 'odata') {
+		return typeof input.odataFilter === 'string' ? input.odataFilter.trim() : '';
 	}
 
 	return '';

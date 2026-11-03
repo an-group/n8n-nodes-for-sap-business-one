@@ -81,6 +81,19 @@ describe('Nodes panel actions', () => {
 	});
 });
 
+describe('OData Expression filter', () => {
+	it('names the filter mode and its input alike', () => {
+		const filterType = properties.find((property) => property.name === 'filterType');
+		const input = properties.find((property) => property.name === 'odataFilter');
+
+		expect(filterType?.options).toContainEqual(
+			expect.objectContaining({ name: 'OData Expression', value: 'odata' }),
+		);
+		expect(input?.displayName).toBe('OData Expression');
+		expect(input?.displayOptions?.show?.filterType).toEqual(['odata']);
+	});
+});
+
 describe('Resource Locators', () => {
 	const locators: Array<[name: string, searchListMethod: string]> = [
 		['entitySet', 'searchEntitySets'],

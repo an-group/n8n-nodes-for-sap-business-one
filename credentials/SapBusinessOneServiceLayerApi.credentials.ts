@@ -21,7 +21,7 @@ export class SapBusinessOneServiceLayerApi implements ICredentialType {
 			placeholder: 'e.g. https://myserver.com:50000',
 			required: true,
 			description:
-				'Service Layer host and port, without a path or trailing slash (e.g. https://myserver.com:50000). The /b1s/v2 API path is added automatically; only the Service Layer v2 API is supported',
+				'Service Layer host and port, without a path or trailing slash. The /b1s/v2 API path is added automatically; only the Service Layer v2 API is supported',
 		},
 		{
 			displayName: 'User Name',
@@ -45,8 +45,9 @@ export class SapBusinessOneServiceLayerApi implements ICredentialType {
 			name: 'companyDb',
 			type: 'string',
 			default: '',
+			placeholder: 'e.g. SBODEMOEN',
 			required: true,
-			description: 'Company database name (e.g. SBODEMOEN)',
+			description: 'Name of the company database to sign in to',
 		},
 		{
 			displayName: 'Allow Unauthorized Certificates',

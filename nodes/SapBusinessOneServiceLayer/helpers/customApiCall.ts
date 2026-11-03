@@ -108,7 +108,7 @@ export function normalizeCustomEndpoint(context: NodeContext, endpoint: unknown)
 		rejectEndpoint(
 			context,
 			'Only relative Service Layer endpoints are allowed',
-			'Enter the path relative to the Base URL of the credential, for example /Orders(45). Absolute URLs are rejected so the session is never sent to another server.',
+			"Enter the path relative to the credential's 'Base URL', for example /Orders(45). Absolute URLs are rejected so the session is never sent to another server.",
 		);
 	}
 

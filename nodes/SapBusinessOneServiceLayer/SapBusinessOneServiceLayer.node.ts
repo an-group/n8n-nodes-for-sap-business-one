@@ -398,8 +398,8 @@ export class SapBusinessOneServiceLayer implements INodeType {
 						description: 'Pick fields, operators and values from lists',
 					},
 					{
-						name: 'OData String',
-						value: 'string',
+						name: 'OData Expression',
+						value: 'odata',
 						description: 'Enter an OData $filter expression yourself, e.g. for mixed AND and OR',
 					},
 				],
@@ -535,7 +535,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 										operatorSet: ['ordered', 'equality'],
 									},
 								},
-								description: 'Contains, Starts With and Ends With are case-sensitive',
+								description: "'Contains', 'Starts With' and 'Ends With' are case-sensitive",
 							},
 							{
 								displayName: 'Operator Set',
@@ -607,8 +607,8 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				],
 			},
 			{
-				displayName: 'Filter (OData)',
-				name: 'filterString',
+				displayName: 'OData Expression',
+				name: 'odataFilter',
 				type: 'string',
 				default: '',
 				placeholder: "e.g. DocTotal gt 1000 and startswith(CardCode,'C')",
@@ -616,7 +616,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 					show: {
 						resource: ['entitySet'],
 						operation: ['getMany'],
-						filterType: ['string'],
+						filterType: ['odata'],
 					},
 				},
 				description:
@@ -790,7 +790,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 					},
 				},
 				description:
-					'Service Layer path relative to the Base URL of the credential; the /b1s/v2 API root is added automatically. May include query parameters, for example /Orders?$top=10.',
+					"Service Layer path relative to the credential's 'Base URL'; the /b1s/v2 API root is added automatically. May include query parameters, for example /Orders?$top=10.",
 			},
 			{
 				displayName: 'JSON Body',
@@ -979,8 +979,8 @@ export class SapBusinessOneServiceLayer implements INodeType {
 									conditions: this.getNodeParameter('conditions', itemIndex, {}),
 									matchType: this.getNodeParameter('matchType', itemIndex, 'and'),
 								}
-							: filterType === 'string'
-								? { filterType, filterString: this.getNodeParameter('filterString', itemIndex, '') }
+							: filterType === 'odata'
+								? { filterType, odataFilter: this.getNodeParameter('odataFilter', itemIndex, '') }
 								: { filterType },
 					);
 

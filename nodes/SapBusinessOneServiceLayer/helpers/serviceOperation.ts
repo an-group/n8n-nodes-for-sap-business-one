@@ -204,7 +204,7 @@ function encodeFunctionParameter(
 			context.getNode(),
 			`Parameter "${parameter.name}" of function "${operationName}" cannot be sent in the URL`,
 			{
-				description: `Only simple parameter types can be passed to a function; "${parameter.name}" has the type ${parameter.edmType}. Use the Custom API Call resource for this call.`,
+				description: `Only simple parameter types can be passed to a function; "${parameter.name}" has the type ${parameter.edmType}. Use the 'Custom API Call' resource for this call.`,
 			},
 		);
 	}
