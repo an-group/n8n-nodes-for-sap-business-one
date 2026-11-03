@@ -6,7 +6,7 @@ This is an n8n community node. It lets you use the SAP Business One Service Laye
 
 [n8n](https://n8n.io/) is a [fair-code licensed](https://docs.n8n.io/sustainable-use-license/) workflow automation platform.
 
-This is an unofficial integration, developed and maintained by [ANG Schweiz AG](https://an-group.one/). It handles authentication, session handling, and OData requests for you, and reads the connected instance's metadata to offer its entity sets, fields, and operations in the editor.
+This is an unofficial integration, developed and maintained by [ANG Schweiz AG](https://www.an-group.one/ch/). It handles authentication, session handling, and OData requests for you, and reads the connected instance's metadata to offer its entity sets, fields, and operations in the editor.
 
 ## Project Status
 
