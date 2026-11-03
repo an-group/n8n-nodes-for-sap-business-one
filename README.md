@@ -58,7 +58,7 @@ Planned for later releases:
 
 Pick the **Entity Set** from a searchable list (**From List**, the default) or enter its name (**By Name**, also as an expression), for example `Orders`.
 
-The lists show the SAP Business One labels next to the technical names, as `Label (TechnicalName)`: `Sales Order (Orders)` in the Entity Set list, `Posting Date (DocDate)` in the field lists and the field mappers. The search in the Entity Set list matches both. The labels are the wording of the SAP Business One client, so they can differ from the technical name (`Goods Receipt PO (PurchaseDeliveryNotes)`), and they follow the language of the SAP user. Where the Service Layer has no label, or the labels cannot be loaded, the technical name is shown alone. The node always stores and sends the technical name, so a different label never changes a workflow.
+The lists show the SAP Business One labels next to the technical names, as `Label (TechnicalName)`: `Sales Order (Orders)` in the Entity Set list, `Posting Date (DocDate)` in the field lists and the field mappers. The search in the Entity Set list matches both. The labels are the wording of the SAP Business One client, so they can differ from the technical name (`Goods Receipt PO (PurchaseDeliveryNotes)`). The node sends no language at login, so the labels come in the Service Layer's default language, English on the systems tested. Where the Service Layer has no label, or the labels cannot be loaded, the technical name is shown alone. The node always stores and sends the technical name, so a different label never changes a workflow.
 
 | Operation | What it does |
 |---|---|
