@@ -53,10 +53,10 @@ describe('buildFilterExpression: nothing set', () => {
 		expect(build({})).toBe('');
 	});
 
-	it('ignores an empty conditions list and a blank OData string', () => {
+	it('ignores an empty conditions list and a blank OData expression', () => {
 		expect(build({ conditions: {} })).toBe('');
 		expect(build({ conditions: { condition: 'oops' } })).toBe('');
-		expect(build({ filterType: 'string', filterString: '   ' })).toBe('');
+		expect(build({ filterType: 'odata', odataFilter: '   ' })).toBe('');
 	});
 });
 
@@ -322,23 +322,23 @@ describe('buildFilterExpression: the Filter mode', () => {
 	const rows = conditions({ field: 'DocTotal', operator: 'lessThan', value: '10' });
 	const text = " DocTotal gt 1 or CardCode eq 'C1' ";
 
-	it('sends the OData string exactly as entered, trimmed', () => {
-		expect(build({ filterType: 'string', filterString: text })).toBe(
+	it('sends the OData expression exactly as entered, trimmed', () => {
+		expect(build({ filterType: 'odata', odataFilter: text })).toBe(
 			"DocTotal gt 1 or CardCode eq 'C1'",
 		);
 	});
 
 	it('sends only the source the mode picks, never a leftover from the other', () => {
-		expect(build({ filterType: 'manual', conditions: rows, filterString: text })).toBe(
+		expect(build({ filterType: 'manual', conditions: rows, odataFilter: text })).toBe(
 			'DocTotal lt 10',
 		);
-		expect(build({ filterType: 'string', conditions: rows, filterString: text })).toBe(
+		expect(build({ filterType: 'odata', conditions: rows, odataFilter: text })).toBe(
 			"DocTotal gt 1 or CardCode eq 'C1'",
 		);
 	});
 
 	it.each(['none', undefined, 'other'])('sends no filter for mode %j', (filterType) => {
-		expect(build({ filterType, conditions: rows, filterString: text })).toBe('');
+		expect(build({ filterType, conditions: rows, odataFilter: text })).toBe('');
 	});
 });
 

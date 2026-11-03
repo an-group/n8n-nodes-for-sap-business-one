@@ -55,14 +55,14 @@ const TLS_CAUSE_BY_CODE = new Map<string, string>([
 	],
 	[
 		'ERR_TLS_CERT_ALTNAME_INVALID',
-		'The TLS certificate of the Service Layer does not cover the host name used in Base URL.',
+		"The TLS certificate of the Service Layer does not cover the host name used in 'Base URL'.",
 	],
 ]);
 
 const GENERIC_TLS_CAUSE = 'The TLS certificate of the Service Layer could not be verified.';
 
 const ALLOW_UNAUTHORIZED_ADVICE =
-	'Enable Allow Unauthorized Certificates in the credential to connect anyway — intended for development environments; production should use a certificate this machine trusts.';
+	"Enable 'Allow Unauthorized Certificates' in the credential to connect anyway — intended for development environments; production should use a certificate this machine trusts.";
 
 /**
  * TLS failures the credential toggle cannot fix, paired with the advice that
@@ -74,7 +74,7 @@ const ALLOW_UNAUTHORIZED_ADVICE =
 const TLS_ADVICE_BY_CODE = new Map<string, string>([
 	[
 		'ERR_SSL_WRONG_VERSION_NUMBER',
-		'The port did not answer with TLS. Check that Base URL uses https and the Service Layer port, commonly 50000. Allow Unauthorized Certificates does not help here.',
+		"The port did not answer with TLS. Check that 'Base URL' uses https and the Service Layer port, commonly 50000. 'Allow Unauthorized Certificates' does not help here.",
 	],
 ]);
 

@@ -245,7 +245,7 @@ describe('getTransportErrorDescription', () => {
 		['SELF_SIGNED_CERT_IN_CHAIN', 'self-signed authority'],
 		['UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'complete certificate chain'],
 		['UNABLE_TO_GET_ISSUER_CERT_LOCALLY', 'trust store'],
-		['ERR_TLS_CERT_ALTNAME_INVALID', 'host name used in Base URL'],
+		['ERR_TLS_CERT_ALTNAME_INVALID', "host name used in 'Base URL'"],
 	])('names the cause for %s', (code, cause) => {
 		expect(getTransportErrorDescription({ code }, credentials)).toContain(cause);
 	});

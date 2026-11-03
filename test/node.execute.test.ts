@@ -206,8 +206,8 @@ describe('Entity Set: query options', () => {
 			parameters: entitySetParams('getMany', {
 				returnAll: false,
 				limit: 10,
-				filterType: 'string',
-				filterString: "CardCode eq 'C1'",
+				filterType: 'odata',
+				odataFilter: "CardCode eq 'C1'",
 				options: { select: ['DocEntry', 'CardCode'] },
 				sort: { fields: [{ field: 'DocEntry', direction: 'desc' }] },
 			}),
@@ -243,8 +243,8 @@ describe('Entity Set: query options', () => {
 			routes: { 'GET /Orders(45)': { statusCode: 200, body: { DocEntry: 45 } } },
 			parameters: entitySetParams('get', {
 				keyFields: mapperValue({ DocEntry: 45 }),
-				filterType: 'string',
-				filterString: 'DocTotal gt 1',
+				filterType: 'odata',
+				odataFilter: 'DocTotal gt 1',
 				sort: { fields: [{ field: 'DocEntry', direction: 'desc' }] },
 			}),
 		});
@@ -269,8 +269,8 @@ describe('Entity Set: query options', () => {
 			items: [{ json: {} }, { json: {} }],
 			parameters: entitySetParams('getMany', {
 				returnAll: true,
-				filterType: 'string',
-				filterString: (itemIndex: number) => `CardCode eq 'C${itemIndex + 1}'`,
+				filterType: 'odata',
+				odataFilter: (itemIndex: number) => `CardCode eq 'C${itemIndex + 1}'`,
 			}),
 		});
 
@@ -317,7 +317,7 @@ describe('Entity Set: guided filter', () => {
 		expect(output[0]).toEqual([{ json: { DocEntry: 7 }, pairedItem: { item: 0 } }]);
 	});
 
-	it('sends no filter with None, even when conditions and a string are still stored', async () => {
+	it('sends no filter with None, even when conditions and an OData expression are still stored', async () => {
 		const test = harness({
 			routes: { 'GET /Orders': { statusCode: 200, body: { value: [{ DocEntry: 1 }] } } },
 			parameters: entitySetParams('getMany', {
@@ -325,7 +325,7 @@ describe('Entity Set: guided filter', () => {
 				filterType: 'none',
 		matchType: 'and',
 				conditions: { condition: [{ field: 'DocTotal|text', operator: 'equal', value: '1' }] },
-				filterString: 'DocTotal gt 1',
+				odataFilter: 'DocTotal gt 1',
 			}),
 		});
 

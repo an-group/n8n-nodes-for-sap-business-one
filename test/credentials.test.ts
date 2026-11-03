@@ -43,4 +43,18 @@ describe('SapBusinessOneServiceLayerApi', () => {
 			default: false,
 		});
 	});
+
+	it('gives examples as placeholders, never in a description', () => {
+		for (const property of credential.properties) {
+			expect(property.description ?? '', property.name).not.toMatch(/e\.g\./);
+		}
+
+		const placeholders = Object.fromEntries(
+			credential.properties.map((property) => [property.name, property.placeholder]),
+		);
+		expect(placeholders).toMatchObject({
+			baseUrl: 'e.g. https://myserver.com:50000',
+			companyDb: 'e.g. SBODEMOEN',
+		});
+	});
 });
