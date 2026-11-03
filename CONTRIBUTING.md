@@ -1,3 +1,5 @@
+# Contributing
+
 ## Current Contribution Policy
 
 This project is open source under the MIT License and is publicly available for use, modification, distribution, and forking in accordance with that license.
