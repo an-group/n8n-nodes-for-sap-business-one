@@ -1,6 +1,6 @@
 {
 	"name": "n8n-nodes-for-sap-business-one",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Unofficial n8n community nodes for integrating with the SAP Business One Service Layer and related APIs",
 	"license": "MIT",
 	"homepage": "https://github.com/an-group/n8n-nodes-for-sap-business-one",
@@ -43,7 +43,8 @@
 		"dev:local": "npm run setup:local && dotenv -e .env.local -- n8n-node dev"
 	},
 	"files": [
-		"dist"
+		"dist",
+		"!dist/tsconfig.tsbuildinfo"
 	],
 	"publishConfig": {
 		"access": "public"
