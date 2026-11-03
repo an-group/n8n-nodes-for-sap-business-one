@@ -17,6 +17,7 @@ import { createHttpFake, type FakeResponse, type RouteTable } from './helpers/ht
 import {
 	createExecuteFunctions,
 	createTestNode,
+	locatorValue,
 	mapperValue,
 	type ParameterValue,
 } from './helpers/node';
@@ -67,7 +68,7 @@ function entitySetParams(
 	return {
 		resource: 'entitySet',
 		operation,
-		entitySet,
+		entitySet: locatorValue(entitySet),
 		replaceCollections: false,
 		filterType: 'none',
 		matchType: 'and',
@@ -1018,7 +1019,7 @@ function serviceOperationParams(
 ): Record<string, ParameterValue> {
 	return {
 		resource: 'serviceOperation',
-		serviceOperation,
+		serviceOperation: locatorValue(serviceOperation),
 		operationParameters: mapperValue(values),
 	};
 }
@@ -1424,7 +1425,7 @@ function boundOperationParams(
 	return entitySetParams(
 		'executeOperation',
 		{
-			boundOperation,
+			boundOperation: locatorValue(boundOperation),
 			keyFields: mapperValue(keyValues),
 			boundOperationParameters: mapperValue(values),
 		},
@@ -1660,5 +1661,80 @@ describe('Entity Set: Execute Action or Function', () => {
 				{ json: { success: true, statusCode: 204 }, pairedItem: { item: 1 } },
 			],
 		]);
+	});
+});
+
+describe('Resource Locator values', () => {
+	it('runs an entity set entered by name', async () => {
+		const test = harness({
+			routes: { 'GET /Orders(45)': { statusCode: 200, body: { DocEntry: 45 } } },
+			parameters: {
+				...entitySetParams('get', { keyFields: mapperValue({ DocEntry: 45 }) }),
+				entitySet: locatorValue('Orders', 'name'),
+			},
+		});
+
+		await test.run();
+
+		expect(test.http.callsFor('GET /Orders(45)')).toHaveLength(1);
+	});
+
+	it('still runs an entity set saved as a plain string', async () => {
+		const test = harness({
+			routes: { 'GET /Orders(45)': { statusCode: 200, body: { DocEntry: 45 } } },
+			parameters: {
+				...entitySetParams('get', { keyFields: mapperValue({ DocEntry: 45 }) }),
+				entitySet: 'Orders',
+			},
+		});
+
+		await test.run();
+
+		expect(test.http.callsFor('GET /Orders(45)')).toHaveLength(1);
+	});
+
+	it('runs a service operation entered by name', async () => {
+		const test = harness({
+			routes: {
+				...SERVICE_OPERATION_METADATA,
+				'GET /CompanyService_GetCompanyInfo()': { statusCode: 200, body: { CompanyName: 'Demo' } },
+			},
+			parameters: {
+				...serviceOperationParams('CompanyService_GetCompanyInfo'),
+				serviceOperation: locatorValue('CompanyService_GetCompanyInfo', 'name'),
+			},
+		});
+
+		const output = await test.run();
+
+		expect(output[0][0].json).toEqual({ CompanyName: 'Demo' });
+	});
+
+	it('runs a bound action entered by name', async () => {
+		const test = harness({
+			routes: {
+				...BOUND_OPERATION_METADATA,
+				'POST /Orders(45)/Close': { statusCode: 204, body: '' },
+			},
+			parameters: {
+				...boundOperationParams('Orders', 'Close', { DocEntry: 45 }),
+				boundOperation: locatorValue('Close', 'name'),
+			},
+		});
+
+		await test.run();
+
+		expect(test.http.callsFor('POST /Orders(45)/Close')).toHaveLength(1);
+	});
+
+	it('names an unknown entity set entered by name', async () => {
+		const test = harness({
+			parameters: {
+				...entitySetParams('get', { keyFields: mapperValue({ DocEntry: 45 }) }),
+				entitySet: locatorValue('NoSuchSet', 'name'),
+			},
+		});
+
+		await expect(test.run()).rejects.toThrow('Unknown entity set "NoSuchSet"');
 	});
 });

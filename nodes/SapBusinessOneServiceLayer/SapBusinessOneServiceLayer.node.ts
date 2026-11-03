@@ -22,12 +22,14 @@ import { buildEntityQueryString } from './helpers/queryOptions';
 import { fetchEntityCollection, serviceLayerApiRequest } from './helpers/request';
 import { executeBoundOperation, executeServiceOperation } from './helpers/serviceOperation';
 import {
-	getBoundOperations,
-	getEntitySets,
+	searchBoundOperations,
+	searchEntitySets,
+	searchServiceOperations,
+} from './methods/listSearch';
+import {
 	getFilterEnumValues,
 	getFilterableFields,
 	getSelectableFields,
-	getServiceOperations,
 	getSortableFields,
 } from './methods/loadOptions';
 import {
@@ -46,6 +48,18 @@ function getMappedValues(
 	const parameter = context.getNodeParameter(parameterName, itemIndex) as ResourceMapperValue;
 
 	return (parameter.value ?? {}) as IDataObject;
+}
+
+/**
+ * Reads a Resource Locator parameter (Entity Set, Action or Function, Service
+ * Operation) as its plain value, whichever mode the user picked.
+ */
+function getLocatorValue(
+	context: IExecuteFunctions,
+	parameterName: string,
+	itemIndex: number,
+): string {
+	return context.getNodeParameter(parameterName, itemIndex, '', { extractValue: true }) as string;
 }
 
 /** Reads the Entity Set `Options` collection of `Get` and `Get Many`. */
@@ -105,21 +119,76 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				default: 'entitySet',
 			},
 			{
-				displayName: 'Entity Set Name or ID',
-				name: 'entitySet',
+				displayName: 'Operation',
+				name: 'operation',
 				type: 'options',
-				typeOptions: {
-					loadOptionsMethod: 'getEntitySets',
+				noDataExpression: true,
+				displayOptions: {
+					show: {
+						resource: ['serviceOperation'],
+					},
 				},
+				options: [
+					{
+						name: 'Call',
+						value: 'call',
+						description:
+							'Call an action or function that is not bound to an entity, such as getting the system currency',
+						action: 'Call service operation',
+					},
+				],
+				default: 'call',
+			},
+			{
+				displayName: 'Operation',
+				name: 'operation',
+				type: 'options',
+				noDataExpression: true,
+				displayOptions: {
+					show: {
+						resource: ['customApiCall'],
+					},
+				},
+				options: [
+					{
+						name: 'Send Request',
+						value: 'request',
+						description:
+							'Send a request to any Service Layer endpoint, for calls the other resources do not cover',
+						action: 'Send custom API request',
+					},
+				],
+				default: 'request',
+			},
+			{
+				displayName: 'Entity Set',
+				name: 'entitySet',
+				type: 'resourceLocator',
+				default: { mode: 'list', value: '' },
 				required: true,
-				default: '',
 				displayOptions: {
 					show: {
 						resource: ['entitySet'],
 					},
 				},
-				description:
-					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+				description: 'The entity set to work with, such as Orders or BusinessPartners',
+				modes: [
+					{
+						displayName: 'From List',
+						name: 'list',
+						type: 'list',
+						typeOptions: {
+							searchListMethod: 'searchEntitySets',
+							searchable: true,
+						},
+					},
+					{
+						displayName: 'By Name',
+						name: 'name',
+						type: 'string',
+						placeholder: 'e.g. Orders',
+					},
+				],
 			},
 			{
 				displayName: 'Operation',
@@ -142,23 +211,38 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				default: 'get',
 			},
 			{
-				displayName: 'Action or Function Name or ID',
+				displayName: 'Action or Function',
 				name: 'boundOperation',
-				type: 'options',
-				typeOptions: {
-					loadOptionsMethod: 'getBoundOperations',
-					loadOptionsDependsOn: ['entitySet'],
-				},
+				type: 'resourceLocator',
+				default: { mode: 'list', value: '' },
 				required: true,
-				default: '',
+				typeOptions: {
+					loadOptionsDependsOn: ['entitySet.value'],
+				},
 				displayOptions: {
 					show: {
 						resource: ['entitySet'],
 						operation: ['executeOperation'],
 					},
 				},
-				description:
-					'Action or Function bound to the selected entity set. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+				description: 'The action or function bound to the selected entity set',
+				modes: [
+					{
+						displayName: 'From List',
+						name: 'list',
+						type: 'list',
+						typeOptions: {
+							searchListMethod: 'searchBoundOperations',
+							searchable: true,
+						},
+					},
+					{
+						displayName: 'By Name',
+						name: 'name',
+						type: 'string',
+						placeholder: 'e.g. Close',
+					},
+				],
 			},
 			{
 				displayName: 'Key Fields',
@@ -171,7 +255,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				noDataExpression: true,
 				required: true,
 				typeOptions: {
-					loadOptionsDependsOn: ['entitySet'],
+					loadOptionsDependsOn: ['entitySet.value'],
 					resourceMapper: {
 						resourceMapperMethod: 'getEntityKeys',
 						mode: 'add',
@@ -202,7 +286,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				noDataExpression: true,
 				required: true,
 				typeOptions: {
-					loadOptionsDependsOn: ['entitySet', 'boundOperation'],
+					loadOptionsDependsOn: ['entitySet.value', 'boundOperation.value'],
 					resourceMapper: {
 						resourceMapperMethod: 'getBoundOperationParameters',
 						mode: 'add',
@@ -233,7 +317,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				noDataExpression: true,
 				required: true,
 				typeOptions: {
-					loadOptionsDependsOn: ['entitySet', 'operation'],
+					loadOptionsDependsOn: ['entitySet.value', 'operation'],
 					resourceMapper: {
 						resourceMapperMethod: 'getEntityFields',
 						mode: 'add',
@@ -380,7 +464,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 								type: 'options',
 								typeOptions: {
 									loadOptionsMethod: 'getFilterableFields',
-									loadOptionsDependsOn: ['entitySet'],
+									loadOptionsDependsOn: ['entitySet.value'],
 								},
 								default: '',
 								description:
@@ -558,7 +642,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 						type: 'multiOptions',
 						typeOptions: {
 							loadOptionsMethod: 'getSelectableFields',
-							loadOptionsDependsOn: ['entitySet'],
+							loadOptionsDependsOn: ['entitySet.value'],
 						},
 						default: [],
 						description:
@@ -594,7 +678,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 								type: 'options',
 								typeOptions: {
 									loadOptionsMethod: 'getSortableFields',
-									loadOptionsDependsOn: ['entitySet'],
+									loadOptionsDependsOn: ['entitySet.value'],
 								},
 								default: '',
 								description:
@@ -615,21 +699,34 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				],
 			},
 			{
-				displayName: 'Service Operation Name or ID',
+				displayName: 'Service Operation',
 				name: 'serviceOperation',
-				type: 'options',
-				typeOptions: {
-					loadOptionsMethod: 'getServiceOperations',
-				},
+				type: 'resourceLocator',
+				default: { mode: 'list', value: '' },
 				required: true,
-				default: '',
 				displayOptions: {
 					show: {
 						resource: ['serviceOperation'],
 					},
 				},
-				description:
-					'Unbound Action or Function to call. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+				description: 'The unbound action or function to call',
+				modes: [
+					{
+						displayName: 'From List',
+						name: 'list',
+						type: 'list',
+						typeOptions: {
+							searchListMethod: 'searchServiceOperations',
+							searchable: true,
+						},
+					},
+					{
+						displayName: 'By Name',
+						name: 'name',
+						type: 'string',
+						placeholder: 'e.g. CompanyService_GetCompanyInfo',
+					},
+				],
 			},
 			{
 				displayName: 'Parameters',
@@ -642,7 +739,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				noDataExpression: true,
 				required: true,
 				typeOptions: {
-					loadOptionsDependsOn: ['serviceOperation'],
+					loadOptionsDependsOn: ['serviceOperation.value'],
 					resourceMapper: {
 						resourceMapperMethod: 'getServiceOperationParameters',
 						mode: 'add',
@@ -758,13 +855,15 @@ export class SapBusinessOneServiceLayer implements INodeType {
 	};
 
 	methods = {
+		listSearch: {
+			searchBoundOperations,
+			searchEntitySets,
+			searchServiceOperations,
+		},
 		loadOptions: {
-			getBoundOperations,
-			getEntitySets,
 			getFilterEnumValues,
 			getFilterableFields,
 			getSelectableFields,
-			getServiceOperations,
 			getSortableFields,
 		},
 		resourceMapping: {
@@ -807,7 +906,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 					const json = await executeServiceOperation.call(
 						this,
 						{
-							operationName: this.getNodeParameter('serviceOperation', itemIndex) as string,
+							operationName: getLocatorValue(this, 'serviceOperation', itemIndex),
 							mappedValues: getMappedValues(this, 'operationParameters', itemIndex),
 						},
 						itemIndex,
@@ -825,7 +924,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				}
 
 				const operation = this.getNodeParameter('operation', itemIndex) as string;
-				const entitySetName = this.getNodeParameter('entitySet', itemIndex) as string;
+				const entitySetName = getLocatorValue(this, 'entitySet', itemIndex);
 				const { credentials, credentialId } = await getServiceLayerCredentials.call(
 					this,
 					itemIndex,
@@ -993,7 +1092,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 						entity,
 						metadata,
 						{
-							operationName: this.getNodeParameter('boundOperation', itemIndex) as string,
+							operationName: getLocatorValue(this, 'boundOperation', itemIndex),
 							keyValues: getMappedValues(this, 'keyFields', itemIndex),
 							mappedValues: getMappedValues(this, 'boundOperationParameters', itemIndex),
 						},

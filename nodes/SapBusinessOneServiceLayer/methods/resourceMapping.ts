@@ -6,6 +6,7 @@ import type {
 
 import { loadServiceLayerMetadata } from '../helpers/credentials';
 import { getEntityPropertyShape } from '../helpers/entityBody';
+import { getLocatorValue, getSelectedEntitySetName } from '../helpers/locator';
 import { classifyEdmType } from '../helpers/odataLiteral';
 import { getExpandedParameter, getOperationParameterShape } from '../helpers/serviceOperation';
 import { classifyServiceLayerType } from '../helpers/typeClassification';
@@ -75,7 +76,7 @@ async function getSelectedEntity(
 async function getSelectedEntityWithMetadata(
 	this: ILoadOptionsFunctions,
 ): Promise<{ entity: EntityDefinition; metadata: ServiceLayerMetadata } | undefined> {
-	const entitySetName = this.getNodeParameter('entitySet') as string;
+	const entitySetName = getSelectedEntitySetName(this);
 
 	if (!entitySetName) {
 		return undefined;
@@ -225,7 +226,7 @@ function getOperationParameterFields(
 export async function getServiceOperationParameters(
 	this: ILoadOptionsFunctions,
 ): Promise<ResourceMapperFields> {
-	const operationName = this.getNodeParameter('serviceOperation') as string;
+	const operationName = getLocatorValue(this, 'serviceOperation');
 
 	if (!operationName) {
 		return { fields: [] };
@@ -261,7 +262,7 @@ export async function getBoundOperationParameters(
 	}
 
 	const { entity, metadata } = selected;
-	const operationName = this.getNodeParameter('boundOperation') as string;
+	const operationName = getLocatorValue(this, 'boundOperation');
 
 	if (!operationName) {
 		return { fields: [] };

@@ -83,21 +83,50 @@ export function createExecuteFunctions(options: ExecuteFakeOptions): IExecuteFun
 		getNode: () => node,
 		continueOnFail: () => options.continueOnFail ?? false,
 		getCredentials: async () => options.credentials,
-		getNodeParameter: (name: string, itemIndex: number): unknown => {
+		getNodeParameter: (
+			name: string,
+			itemIndex: number,
+			_fallbackValue?: unknown,
+			readOptions?: { extractValue?: boolean },
+		): unknown => {
 			if (!(name in options.parameters)) {
 				throw new Error(`unexpected parameter read: ${name}`);
 			}
 
-			const value = options.parameters[name];
+			const configured = options.parameters[name];
+			const value =
+				typeof configured === 'function'
+					? (configured as (index: number) => unknown)(itemIndex)
+					: configured;
 
-			return typeof value === 'function'
-				? (value as (index: number) => unknown)(itemIndex)
-				: value;
+			return readOptions?.extractValue === true ? extractLocatorValue(value) : value;
 		},
 		helpers: { httpRequest: options.http.httpRequest },
 	};
 
 	return partial as unknown as IExecuteFunctions;
+}
+
+/**
+ * Builds a Resource Locator parameter value as the editor stores it, for the
+ * Entity Set, Action or Function and Service Operation parameters.
+ */
+export function locatorValue(value: string, mode: 'list' | 'name' = 'list'): unknown {
+	return { __rl: true, mode, value };
+}
+
+/**
+ * Mirrors n8n-core's `extractValue` for a locator without an `extractValue`
+ * mode (extract-value.ts, `extractValueRLC`): a `{ mode, value }` object
+ * yields its value, anything else passes through unchanged, so tests that
+ * configure a plain string keep working.
+ */
+function extractLocatorValue(value: unknown): unknown {
+	if (typeof value !== 'object' || value === null || !('mode' in value) || !('value' in value)) {
+		return value;
+	}
+
+	return (value as { value: unknown }).value;
 }
 
 /** Builds the `resourceMapper` parameter shape `getMappedValues` reads. */
@@ -163,12 +192,18 @@ export function createLoadOptionsFunctions(options: LoadOptionsFakeOptions): Loa
 
 			return options.credentials;
 		},
-		getNodeParameter: (name: string): unknown => {
+		getNodeParameter: (
+			name: string,
+			_fallbackValue?: unknown,
+			readOptions?: { extractValue?: boolean },
+		): unknown => {
 			if (!(name in parameters)) {
 				throw new Error(`unexpected parameter read: ${name}`);
 			}
 
-			return parameters[name];
+			return readOptions?.extractValue === true
+				? extractLocatorValue(parameters[name])
+				: parameters[name];
 		},
 		getCurrentNodeParameter: (name: string): unknown => parameters[name],
 		helpers: { httpRequest: options.http.httpRequest },
