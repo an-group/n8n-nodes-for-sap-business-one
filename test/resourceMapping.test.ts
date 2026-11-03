@@ -162,7 +162,7 @@ describe('getEntityKeys', () => {
 });
 
 describe('getEntityFields', () => {
-	it('lists every property in declaration order, collections as array fields', async () => {
+	it('lists every property sorted by name, collections as array fields', async () => {
 		// SYNTHETIC_EDMX_V4 never declares DocumentLine; a collection is an array
 		// field whatever its element type resolves to.
 		await expect(fieldsFor('Orders', 'create')).resolves.toEqual({
@@ -188,19 +188,19 @@ describe('getEntityFields', () => {
 	it('offers complex properties as object fields and collections as array fields', async () => {
 		await expect(fieldsFor('Orders', 'update', EDMX_STRUCTURED_PROPERTIES)).resolves.toEqual({
 			fields: [
-				bodyField('CardCode', 'string'),
-				enumField('DocumentStatus', BO_STATUS_MEMBERS),
-				bodyField('DocTime', 'time'),
 				bodyField('AddressExtension', 'object'),
-				bodyField('DocumentLines', 'array'),
 				bodyField('Approver', 'object'),
-				bodyField('Tags', 'array'),
+				bodyField('CardCode', 'string'),
+				bodyField('DocTime', 'time'),
+				bodyField('DocumentLines', 'array'),
+				enumField('DocumentStatus', BO_STATUS_MEMBERS),
 				// A type the metadata never declares falls back to the old behaviour.
 				bodyField('Mystery', 'string'),
 				// A flags value may combine members, and an enum without members has
 				// nothing to offer: both keep a text field.
 				bodyField('Permissions', 'string'),
 				bodyField('Placeholder', 'string'),
+				bodyField('Tags', 'array'),
 			],
 		});
 	});
@@ -224,9 +224,9 @@ describe('getEntityFields', () => {
 		// Some entity sets need a user-supplied key; metadata cannot tell which.
 		await expect(fieldsFor('SalesTaxAuthorities', 'create')).resolves.toEqual({
 			fields: [
+				bodyField('Code', 'string'),
 				bodyField('Rate', 'number'),
 				bodyField('Type', 'number'),
-				bodyField('Code', 'string'),
 			],
 		});
 	});
@@ -254,9 +254,6 @@ describe('getEntityFields', () => {
 	it('maps every EDM type the Service Layer declares to a mapper field type', async () => {
 		await expect(fieldsFor('FieldTypes', 'create', EDMX_FIELD_TYPES)).resolves.toEqual({
 			fields: [
-				bodyField('Code', 'string'),
-				bodyField('Count', 'number'),
-				bodyField('Amount', 'number'),
 				// Active and Ref are pinned as current behaviour, not endorsed as
 				// correct: n8n has a 'boolean' field type (rendered as a toggle) and
 				// a Guid is not a number. Both land on 'number' because
@@ -264,13 +261,16 @@ describe('getEntityFields', () => {
 				// unquoted is right for them — that answer is simply not a widget
 				// choice. Changing it is a behaviour change, out of scope here.
 				bodyField('Active', 'number'),
-				bodyField('Ref', 'number'),
+				bodyField('Amount', 'number'),
+				bodyField('Code', 'string'),
+				bodyField('Count', 'number'),
 				bodyField('DueDate', 'dateTime'),
+				bodyField('Ref', 'number'),
+				// A time of day gets n8n's time field, not the date picker.
+				bodyField('StartTime', 'time'),
 				// This document never declares BoYesNoEnum, so there are no members
 				// to offer.
 				bodyField('Valid', 'string'),
-				// A time of day gets n8n's time field, not the date picker.
-				bodyField('StartTime', 'time'),
 			],
 		});
 	});
@@ -417,15 +417,15 @@ async function expandedParametersFor(serviceOperation: string) {
 
 describe('getServiceOperationParameters: a single complex or entity parameter', () => {
 	const BANK_STATEMENT_FIELDS = [
+		bodyField('Address', 'object'),
 		bodyField('BankAccountKey', 'number'),
+		bodyField('Lines', 'array'),
 		bodyField('StatementDate', 'dateTime'),
 		bodyField('StatementTime', 'time'),
 		enumField('Status', BO_STATUS_MEMBERS),
-		bodyField('Address', 'object'),
-		bodyField('Lines', 'array'),
 	];
 
-	it("expands a complex parameter into its type's properties, nested ones as JSON fields", async () => {
+	it("expands a complex parameter into its type's properties, sorted, nested ones as JSON fields", async () => {
 		await expect(
 			expandedParametersFor('BankStatementsService_GetBankStatementList'),
 		).resolves.toEqual({ fields: BANK_STATEMENT_FIELDS });
@@ -433,7 +433,7 @@ describe('getServiceOperationParameters: a single complex or entity parameter', 
 
 	it("expands an entity-type parameter into the entity type's properties, without an entity set", async () => {
 		await expect(expandedParametersFor('DocumentsService_Preview')).resolves.toEqual({
-			fields: [bodyField('DocEntry', 'number'), bodyField('CardCode', 'string')],
+			fields: [bodyField('CardCode', 'string'), bodyField('DocEntry', 'number')],
 		});
 	});
 
@@ -458,6 +458,7 @@ describe('getServiceOperationParameters: a single complex or entity parameter', 
 	it('maps an enum parameter to a dropdown and a time-of-day parameter to a time field', async () => {
 		await expect(expandedParametersFor('StatusService_SetStatus')).resolves.toEqual({
 			fields: [
+				// Plain parameters keep the order of the signature, unsorted.
 				bodyField('Code', 'string'),
 				enumField('Status', BO_STATUS_MEMBERS),
 				bodyField('EffectiveAt', 'time'),
@@ -564,6 +565,58 @@ describe('resource mapper with SAP labels', () => {
 		);
 		// No label on an older server: the collection keeps its name.
 		expect(fields.find((field) => field.id === 'DocumentLines')?.displayName).toBe('DocumentLines');
+	});
+
+	it('sorts the fields by the shown label, not by the technical name', async () => {
+		const { fields } = await getEntityFields.call(
+			labelled({ entitySet: 'Orders', operation: 'create' }),
+		);
+
+		// By name, DocEntry would follow CardCode; its label "Object: Internal
+		// Number" puts it after Mystery.
+		expect(fields.map((field) => field.id)).toEqual([
+			'AddressExtension',
+			'Approver',
+			'CardCode',
+			'DocTime',
+			'DocumentLines',
+			'DocumentStatus',
+			'Mystery',
+			'DocEntry',
+			'Permissions',
+			'Placeholder',
+			'Tags',
+		]);
+	});
+
+	it('puts the names that start with a digit last and compares numbers as numbers', async () => {
+		const labels = ORDER_PROPERTY_LABELS_ATTRIBUTE.replace(
+			/<Property [^]*?<\/EntityType>/,
+			[
+				'<Property Name="CardCode" Type="Edm.String" sap:label="1099 Box"/>',
+				'<Property Name="DocTime" Type="Edm.TimeOfDay" sap:label="347 Operation"/>',
+				'<Property Name="Mystery" Type="Edm.String" sap:label="Zone 9"/>',
+				'<Property Name="Tags" Type="Edm.String" sap:label="Zone 10"/>',
+				'</EntityType>',
+			].join('\n'),
+		);
+		const { fields } = await getEntityFields.call(
+			labelled({ entitySet: 'Orders', operation: 'create' }, { statusCode: 200, body: labels }),
+		);
+
+		expect(fields.map((field) => field.displayName)).toEqual([
+			'AddressExtension',
+			'Approver',
+			'DocEntry',
+			'DocumentLines',
+			'DocumentStatus',
+			'Permissions',
+			'Placeholder',
+			'Zone 9 (Mystery)',
+			'Zone 10 (Tags)',
+			'347 Operation (DocTime)',
+			'1099 Box (CardCode)',
+		]);
 	});
 
 	it('labels the Key Fields', async () => {

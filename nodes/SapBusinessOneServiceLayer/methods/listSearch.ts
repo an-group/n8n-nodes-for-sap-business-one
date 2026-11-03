@@ -5,7 +5,7 @@ import type {
 } from 'n8n-workflow';
 
 import { loadEntitySetLabels, loadServiceLayerMetadata } from '../helpers/credentials';
-import { formatLabel } from '../helpers/labels';
+import { compareLabels, formatLabel } from '../helpers/labels';
 import { getSelectedEntitySetName } from '../helpers/locator';
 
 /**
@@ -27,7 +27,7 @@ export async function searchEntitySets(
 
 	const results = [...metadata.entities.keys()]
 		.map((name) => ({ name: formatLabel(name, labels), value: name }))
-		.sort((a, b) => a.name.localeCompare(b.name));
+		.sort((a, b) => compareLabels(a.name, b.name));
 
 	return { results: filterResults(results, filter) };
 }

@@ -60,6 +60,8 @@ Pick the **Entity Set** from a searchable list (**From List**, the default) or e
 
 The lists show the SAP Business One labels next to the technical names, as `Label (TechnicalName)`: `Sales Order (Orders)` in the Entity Set list, `Posting Date (DocDate)` in the field lists and the field mappers. The search in the Entity Set list matches both. The labels are the wording of the SAP Business One client, so they can differ from the technical name (`Goods Receipt PO (PurchaseDeliveryNotes)`). The node sends no language at login, so the labels come in the Service Layer's default language, English on the systems tested. Where the Service Layer has no label, or the labels cannot be loaded, the technical name is shown alone. The node always stores and sends the technical name, so a different label never changes a workflow.
 
+These lists are sorted alphabetically by the text they show. Entries that do not start with a letter, such as `1099 Forms (Forms1099)` or `347 Operation Code (OperationCode347)`, come after all others, and numbers compare as numbers (`347` before `1099`). Key Fields keep the order of the metadata, and the parameters of an Action or Function the order of its signature; only a single complex parameter shown as its fields is sorted. A field mapper saved in a workflow keeps the field order it was saved with; **Refresh field list** in the mapper's menu shows the current order.
+
 | Operation | What it does |
 |---|---|
 | **Get** | fetch one entity by its key, optionally only some of its fields |
