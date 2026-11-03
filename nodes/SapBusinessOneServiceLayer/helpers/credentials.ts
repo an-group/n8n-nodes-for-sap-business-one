@@ -1,5 +1,5 @@
 import { getEntitySetLabels, getPropertyLabels, type LabelMap } from './labels';
-import { getServiceLayerMetadata } from './metadata';
+import { getServiceLayerMetadataForEditor } from './metadata';
 import type {
 	ServiceLayerCredentialContext,
 	ServiceLayerCredentials,
@@ -32,14 +32,18 @@ export async function getServiceLayerCredentials(
 	};
 }
 
-/** Resolves the credentials and returns the connected instance's cached metadata. */
+/**
+ * Resolves the credentials and returns the connected instance's cached
+ * metadata for the editor's lists, checked in the background for changes
+ * (see getServiceLayerMetadataForEditor). Running a workflow reads the
+ * metadata through getServiceLayerMetadata instead.
+ */
 export async function loadServiceLayerMetadata(
 	this: ServiceLayerCredentialContext,
-	itemIndex?: number,
 ): Promise<ServiceLayerMetadata> {
-	const { credentials, credentialId } = await getServiceLayerCredentials.call(this, itemIndex);
+	const { credentials, credentialId } = await getServiceLayerCredentials.call(this);
 
-	return await getServiceLayerMetadata.call(this, credentials, credentialId);
+	return await getServiceLayerMetadataForEditor.call(this, credentials, credentialId);
 }
 
 /**

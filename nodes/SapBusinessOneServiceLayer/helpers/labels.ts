@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 
+import { hashDocument, isDueForCheck, startBackgroundCheck } from './backgroundCheck';
 import { serviceLayerApiRequest } from './request';
 import { withSingleFlight } from './singleFlight';
 import type { ServiceLayerCredentials, ServiceLayerRequestContext } from './types';
@@ -18,9 +19,6 @@ const NO_LABELS: LabelMap = new Map();
  * replace this value and, with it, the cache key.
  */
 const DEFAULT_LABEL_LANGUAGE = 'default';
-
-/** Same lifetime as the cached `/$metadata` (helpers/metadata.ts). */
-const LABEL_CACHE_TTL_MS = 60 * 60 * 1000;
 
 /**
  * Only the entity container with one label per entity set, tens of KB instead
@@ -46,17 +44,22 @@ function getPropertyLabelsUrl(entitySetName: string): string {
 
 interface LabelCacheEntry {
 	labels: LabelMap;
-	fetchedAt: number;
+	/** SHA-256 of the raw document, to tell a changed document from an unchanged one. */
+	hash: string;
+	/** When a list last started a check, so a failing one is not retried on every call. */
+	checkedAt: number;
 }
 
 /**
- * Cached per n8n process, like the metadata. Only an answer of the server is
- * cached: a failed login, an unreachable server or an error status is not, so
- * the labels are back the next time a list is opened instead of an hour later.
+ * Cached per n8n process, like the metadata, and kept fresh the same way: a
+ * list answers from the cache and checks it in the background (see
+ * helpers/backgroundCheck.ts). Only an answer of the server is cached: a failed
+ * login, an unreachable server or an error status is not, so the labels are
+ * back the next time a list is opened.
  */
 const labelCache = new Map<string, LabelCacheEntry>();
 
-const pendingLabelLoads = new Map<string, Promise<LabelMap>>();
+const pendingLabelLoads = new Map<string, Promise<LabelCacheEntry | undefined>>();
 
 /**
  * Labels are company-wide, like the metadata, and depend on the login
@@ -213,17 +216,16 @@ export function formatLabel(name: string, labels: LabelMap): string {
 }
 
 /**
- * Fetches one label document and parses it, or returns `undefined` when the
- * request fails or the answer is not text. Labels only help to find a name, so
- * a list must never fail for want of them; the caller shows none instead.
+ * Fetches one label document, or returns `undefined` when the request fails
+ * or the answer is not text. Labels only help to find a name, so a list must
+ * never fail for want of them; the caller shows none instead.
  */
-async function fetchLabels(
+async function fetchLabelDocument(
 	this: ServiceLayerRequestContext,
 	credentials: ServiceLayerCredentials,
 	credentialId: string | null | undefined,
 	url: string,
-	parse: (xml: string) => LabelMap,
-): Promise<LabelMap | undefined> {
+): Promise<string | undefined> {
 	try {
 		const { body } = await serviceLayerApiRequest.call(this, credentials, credentialId, {
 			url,
@@ -231,12 +233,48 @@ async function fetchLabels(
 			json: false,
 		});
 
-		return typeof body === 'string' ? parse(body) : undefined;
+		return typeof body === 'string' ? body : undefined;
 	} catch {
 		return undefined;
 	}
 }
 
+/**
+ * Downloads one label document once per key and stores it. A document whose
+ * hash matches the cached one is not parsed again. A failed download changes
+ * nothing and yields `undefined`.
+ */
+async function loadLabels(
+	this: ServiceLayerRequestContext,
+	credentials: ServiceLayerCredentials,
+	credentialId: string | null | undefined,
+	cacheKey: string,
+	url: string,
+	parse: (xml: string) => LabelMap,
+): Promise<LabelCacheEntry | undefined> {
+	return await withSingleFlight(pendingLabelLoads, cacheKey, async () => {
+		const xml = await fetchLabelDocument.call(this, credentials, credentialId, url);
+
+		if (xml === undefined) {
+			return undefined;
+		}
+
+		const hash = hashDocument(xml);
+		const cached = labelCache.get(cacheKey);
+		const labels = cached !== undefined && cached.hash === hash ? cached.labels : parse(xml);
+		const entry = { labels, hash, checkedAt: Date.now() };
+
+		labelCache.set(cacheKey, entry);
+
+		return entry;
+	});
+}
+
+/**
+ * Answers from the cache at once and checks the document in the background
+ * once the last check is older than two minutes. Only the first load, with
+ * nothing cached, is waited for.
+ */
 async function getCachedLabels(
 	this: ServiceLayerRequestContext,
 	credentials: ServiceLayerCredentials,
@@ -248,23 +286,18 @@ async function getCachedLabels(
 	const cacheKey = getLabelCacheKey(credentials, scope);
 	const cached = labelCache.get(cacheKey);
 
-	if (cached !== undefined && Date.now() - cached.fetchedAt <= LABEL_CACHE_TTL_MS) {
-		return cached.labels;
+	if (cached === undefined) {
+		const entry = await loadLabels.call(this, credentials, credentialId, cacheKey, url, parse);
+
+		return entry?.labels ?? NO_LABELS;
 	}
 
-	const labels = await withSingleFlight(
-		pendingLabelLoads,
-		cacheKey,
-		async () => await fetchLabels.call(this, credentials, credentialId, url, parse),
-	);
-
-	if (labels === undefined) {
-		return NO_LABELS;
+	if (isDueForCheck(cached.checkedAt)) {
+		cached.checkedAt = Date.now();
+		startBackgroundCheck(loadLabels.call(this, credentials, credentialId, cacheKey, url, parse));
 	}
 
-	labelCache.set(cacheKey, { labels, fetchedAt: Date.now() });
-
-	return labels;
+	return cached.labels;
 }
 
 /** The labels of every entity set, cached, or none when the server provides none. */

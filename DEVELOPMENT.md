@@ -111,6 +111,7 @@ Covered today:
 - session reuse and invalidation, concurrent login de-duplication, and expired-session retry
 - the list searches and dropdowns filled from the metadata, and the field mappers
 - the SAP labels in those lists: parsing both metadata formats, caching, and the fallback to technical names
+- the editor's background check of the cached metadata and labels (`helpers/backgroundCheck.ts`); tests wait for it with `settleBackgroundChecks()` instead of timers
 - Entity Set request construction for every operation, including the filter (conditions and OData Expression), `$select`, `$orderby`, and pagination
 - Service Operation and bound Action or Function discovery, parameter handling, and request construction
 - Custom API Call endpoint validation, body parsing, headers, and request construction

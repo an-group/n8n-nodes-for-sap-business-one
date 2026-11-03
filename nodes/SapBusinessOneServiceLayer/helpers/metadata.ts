@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 import { NodeOperationError } from 'n8n-workflow';
 
+import { hashDocument, isDueForCheck, startBackgroundCheck } from './backgroundCheck';
 import { classifyEdmType } from './odataLiteral';
 import { serviceLayerApiRequest } from './request';
 import { withSingleFlight } from './singleFlight';
@@ -32,7 +33,12 @@ const METADATA_CACHE_TTL_MS = 60 * 60 * 1000;
 
 interface MetadataCacheEntry {
 	metadata: ServiceLayerMetadata;
+	/** SHA-256 of the raw document, to tell a changed document from an unchanged one. */
+	hash: string;
+	/** When the Service Layer last confirmed this document; the one-hour expiry counts from here. */
 	fetchedAt: number;
+	/** When the editor last started a check, so a failing one is not retried on every call. */
+	checkedAt: number;
 }
 
 /**
@@ -41,8 +47,12 @@ interface MetadataCacheEntry {
  */
 const metadataCache = new Map<string, MetadataCacheEntry>();
 
-/** In-flight metadata fetches, so concurrent requests share a single `/$metadata` call. */
-const pendingMetadataLoads = new Map<string, Promise<ServiceLayerMetadata>>();
+/**
+ * In-flight metadata fetches, so concurrent requests share a single
+ * `/$metadata` call: a workflow run, an editor list waiting for its first load
+ * and a background check all join the same one.
+ */
+const pendingMetadataLoads = new Map<string, Promise<MetadataCacheEntry>>();
 
 /**
  * Only the OData V4 metadata the Service Layer v2 API returns is supported.
@@ -443,8 +453,64 @@ async function fetchMetadataXml(
 }
 
 /**
- * Returns cached metadata when fresh, otherwise fetches and parses it once per
- * key, sharing the result with any concurrent callers.
+ * Validates and parses a freshly downloaded document. Throws a
+ * `NodeOperationError` that never echoes the document.
+ */
+function parseMetadataDocument(this: ServiceLayerRequestContext, xml: string): ServiceLayerMetadata {
+	const edmxVersion = getEdmxVersion(xml);
+
+	if (edmxVersion !== SUPPORTED_EDMX_VERSION) {
+		throw new NodeOperationError(this.getNode(), 'Unsupported Service Layer metadata version', {
+			description:
+				'Only the Service Layer v2 API (OData V4 metadata) is supported. ' +
+				`Detected metadata version "${edmxVersion ?? 'unknown'}" — check that the ` +
+				'connected instance exposes the v2 API.',
+		});
+	}
+
+	try {
+		return parseMetadataXml(xml);
+	} catch {
+		// Never surface the raw XML (customer-specific schema, and 1.6 MB+ in
+		// practice) or the underlying parse error's message.
+		throw new NodeOperationError(this.getNode(), 'Could not parse Service Layer metadata', {
+			description:
+				"The /$metadata response is not a readable OData metadata document. Check that the credential's 'Base URL' points to the Service Layer itself, not to a proxy or web server in front of it, then run the node again.",
+		});
+	}
+}
+
+/**
+ * Downloads `/$metadata` once per key and stores it. A document whose hash
+ * matches the cached one is not parsed again: only its timestamps are renewed.
+ */
+async function loadMetadata(
+	this: ServiceLayerRequestContext,
+	credentials: ServiceLayerCredentials,
+	credentialId: string | null | undefined,
+	cacheKey: string,
+): Promise<MetadataCacheEntry> {
+	return await withSingleFlight(pendingMetadataLoads, cacheKey, async () => {
+		const xml = await fetchMetadataXml.call(this, credentials, credentialId);
+		const hash = hashDocument(xml);
+		const cached = metadataCache.get(cacheKey);
+		const metadata =
+			cached !== undefined && cached.hash === hash
+				? cached.metadata
+				: parseMetadataDocument.call(this, xml);
+		const now = Date.now();
+		const entry = { metadata, hash, fetchedAt: now, checkedAt: now };
+
+		metadataCache.set(cacheKey, entry);
+
+		return entry;
+	});
+}
+
+/**
+ * For running a workflow: returns cached metadata younger than an hour,
+ * otherwise loads it and waits. Never starts a background check, but reads the
+ * cache the editor keeps fresh.
  */
 export async function getServiceLayerMetadata(
 	this: ServiceLayerRequestContext,
@@ -458,32 +524,32 @@ export async function getServiceLayerMetadata(
 		return cached.metadata;
 	}
 
-	const metadata = await withSingleFlight(pendingMetadataLoads, cacheKey, async () => {
-		const xml = await fetchMetadataXml.call(this, credentials, credentialId);
-		const edmxVersion = getEdmxVersion(xml);
+	return (await loadMetadata.call(this, credentials, credentialId, cacheKey)).metadata;
+}
 
-		if (edmxVersion !== SUPPORTED_EDMX_VERSION) {
-			throw new NodeOperationError(this.getNode(), 'Unsupported Service Layer metadata version', {
-				description:
-					'Only the Service Layer v2 API (OData V4 metadata) is supported. ' +
-					`Detected metadata version "${edmxVersion ?? 'unknown'}" — check that the ` +
-					'connected instance exposes the v2 API.',
-			});
-		}
+/**
+ * For the editor's lists: answers from the cache at once, whatever its age,
+ * and checks in the background whether the document changed once the last
+ * check is older than two minutes, so new fields and tables appear on the next
+ * refresh. Only the first load, with nothing cached, is waited for. A failing
+ * check keeps the cached metadata and shows no error.
+ */
+export async function getServiceLayerMetadataForEditor(
+	this: ServiceLayerRequestContext,
+	credentials: ServiceLayerCredentials,
+	credentialId: string | null | undefined,
+): Promise<ServiceLayerMetadata> {
+	const cacheKey = getMetadataCacheKey(credentials);
+	const cached = metadataCache.get(cacheKey);
 
-		try {
-			return parseMetadataXml(xml);
-		} catch {
-			// Never surface the raw XML (customer-specific schema, and 1.6 MB+ in
-			// practice) or the underlying parse error's message.
-			throw new NodeOperationError(this.getNode(), 'Could not parse Service Layer metadata', {
-				description:
-					"The /$metadata response is not a readable OData metadata document. Check that the credential's 'Base URL' points to the Service Layer itself, not to a proxy or web server in front of it, then run the node again.",
-			});
-		}
-	});
+	if (cached === undefined) {
+		return (await loadMetadata.call(this, credentials, credentialId, cacheKey)).metadata;
+	}
 
-	metadataCache.set(cacheKey, { metadata, fetchedAt: Date.now() });
+	if (isDueForCheck(cached.checkedAt)) {
+		cached.checkedAt = Date.now();
+		startBackgroundCheck(loadMetadata.call(this, credentials, credentialId, cacheKey));
+	}
 
-	return metadata;
+	return cached.metadata;
 }
