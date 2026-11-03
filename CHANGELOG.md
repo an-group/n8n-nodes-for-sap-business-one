@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/2.0.0/),
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-03
+
+### Changed
+
+- The npm package no longer contains the TypeScript build info file (`dist/tsconfig.tsbuildinfo`), which made up about half of its unpacked size.
+- Releases are published from GitHub Actions through npm Trusted Publishing, without a stored npm token.
+
+### Fixed
+
+- The README links ANG Schweiz AG to its working website.
+
 ## [0.1.0] - 2026-11-03
 
 First public release. Supports the SAP Business One Service Layer v2 API; see the README for limitations.
@@ -21,5 +32,6 @@ First public release. Supports the SAP Business One Service Layer v2 API; see th
 - Session handling: one login per credential, session reuse and renewal, one retry after an expired session; passwords and session cookies never appear in output, logs or error messages.
 - Example workflows in `examples/`.
 
-[unreleased]: https://github.com/an-group/n8n-nodes-for-sap-business-one/compare/0.1.0...HEAD
+[unreleased]: https://github.com/an-group/n8n-nodes-for-sap-business-one/compare/0.1.1...HEAD
+[0.1.1]: https://github.com/an-group/n8n-nodes-for-sap-business-one/compare/0.1.0...0.1.1
 [0.1.0]: https://github.com/an-group/n8n-nodes-for-sap-business-one/releases/tag/0.1.0
