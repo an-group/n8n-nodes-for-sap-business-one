@@ -609,3 +609,130 @@ export const EDMX_FILTERABLE_PROPERTIES = EDMX_STRUCTURED_PROPERTIES.replace(
         <Property Name="DocDate" Type="Edm.DateTimeOffset"/>
         <Property Name="Printed" Type="Edm.Boolean"/>`,
 );
+
+/**
+ * `GET /$metadata?scope=entityset&annotation=label` in the format of FP2608
+ * and later: the entity container only, one `Common.Label` annotation per
+ * entity set. The entity sets are those of `SYNTHETIC_EDMX_V4`. `Items` is
+ * labelled with its own name, `Ghosts` has no label, `SalesTaxAuthorities` an
+ * empty one, and `Reports` a label with a colon, an XML entity and an umlaut;
+ * `OutsideContainer` is labelled outside the container and must be ignored.
+ */
+export const ENTITY_SET_LABELS_ANNOTATED = `<?xml version="1.0" encoding="UTF-8"?>
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
+  <edmx:Reference Uri="https://sap.github.io/odata-vocabularies/vocabularies/Common.xml">
+    <edmx:Include Alias="Common" Namespace="com.sap.vocabularies.Common.v1"/>
+  </edmx:Reference>
+  <edmx:DataServices>
+    <Schema Namespace="SAPB1" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+      <EntitySet EntityType="SAPB1.Report" Name="OutsideContainer">
+        <Annotation String="Must Not Appear" Term="Common.Label"/>
+      </EntitySet>
+      <EntityContainer Name="SAPB1">
+        <EntitySet EntityType="SAPB1.Order" Name="Orders">
+          <Annotation String="Sales Order" Term="Common.Label"/>
+        </EntitySet>
+        <EntitySet EntityType="SAPB1.SalesTaxAuthority" Name="SalesTaxAuthorities">
+          <Annotation String="  " Term="Common.Label"/>
+        </EntitySet>
+        <EntitySet EntityType="SAPB1.Item" Name="Items">
+          <Annotation String="Items" Term="Common.Label"/>
+        </EntitySet>
+        <EntitySet EntityType="SAPB1.Ghost" Name="Ghosts"/>
+        <EntitySet EntityType="SAPB1.Report" Name="Reports">
+          <Annotation String="Object: Berichte &amp; Auswertungen für Verkäufe" Term="Common.Label"/>
+        </EntitySet>
+      </EntityContainer>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>
+`;
+
+/**
+ * The same labels in the format of older Service Layer versions: an
+ * `sap:label` attribute, written after `Name` on one entity set and before it
+ * on another, so attribute order cannot matter.
+ */
+export const ENTITY_SET_LABELS_ATTRIBUTE = `<?xml version="1.0" encoding="UTF-8"?>
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" xmlns:sap="http://www.sap.com/Protocols/SAPData">
+  <edmx:DataServices>
+    <Schema Namespace="SAPB1" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+      <EntityContainer Name="SAPB1">
+        <EntitySet EntityType="SAPB1.Order" Name="Orders" sap:label="Sales Order"/>
+        <EntitySet sap:label="" EntityType="SAPB1.SalesTaxAuthority" Name="SalesTaxAuthorities"/>
+        <EntitySet EntityType="SAPB1.Item" Name="Items" sap:label="Items"/>
+        <EntitySet EntityType="SAPB1.Ghost" Name="Ghosts"/>
+        <EntitySet sap:label="Object: Berichte &amp; Auswertungen f&#252;r Verk&#xE4;ufe" EntityType="SAPB1.Report" Name="Reports"/>
+      </EntityContainer>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>
+`;
+
+/**
+ * `GET /$metadata?scope=entityset&entityset=Orders&annotation=label`
+ * in the format of FP2608 and later: one entity type, each property with a
+ * `Common.Label` annotation, the collection with a label. The column, child
+ * table and table annotations stand for any further annotation a server may
+ * add; they must be ignored. `DocTotal` has no label.
+ */
+export const ORDER_PROPERTY_LABELS_ANNOTATED = `<?xml version="1.0" encoding="UTF-8"?>
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
+  <edmx:DataServices>
+    <Schema Namespace="SAPB1" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+      <EntityType Name="Order" OpenType="true">
+        <Key>
+          <PropertyRef Name="DocEntry"/>
+        </Key>
+        <Property Name="CardCode" Type="Edm.String">
+          <Annotation String="Customer/Vendor Code" Term="Common.Label"/>
+          <Annotation String="CardCode" Term="SAPB1.ColumnName"/>
+        </Property>
+        <Property Name="DocEntry" Nullable="false" Type="Edm.Int32">
+          <Annotation String="Internal Number" Term="Common.Label"/>
+          <Annotation String="DocEntry" Term="SAPB1.ColumnName"/>
+        </Property>
+        <Property Name="DocTotal" Type="Edm.Double"/>
+        <Property Name="DocumentLines" Type="Collection(SAPB1.DocumentLine)">
+          <Annotation String="Sales Order - Rows" Term="Common.Label"/>
+          <Annotation String="RDR1" Term="SAPB1.ChildTableName"/>
+        </Property>
+      </EntityType>
+      <EntityContainer Name="SAPB1">
+        <EntitySet EntityType="SAPB1.Order" Name="Orders">
+          <Annotation String="Sales Order" Term="Common.Label"/>
+          <Annotation String="ORDR" Term="SAPB1.TableName"/>
+        </EntitySet>
+      </EntityContainer>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>
+`;
+
+/**
+ * The same entity set in the format of older Service Layer versions: an
+ * `sap:label` attribute, before `Name` on `DocEntry`. With `annotation=label`
+ * it carries no column prefix, so the colons in the `DocEntry` and `DocTotal`
+ * labels belong to the labels and are kept. The collection has no label, as
+ * on a real older server.
+ */
+export const ORDER_PROPERTY_LABELS_ATTRIBUTE = `<?xml version="1.0" encoding="UTF-8"?>
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" xmlns:sap="http://www.sap.com/Protocols/SAPData">
+  <edmx:DataServices>
+    <Schema Namespace="SAPB1" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+      <EntityType Name="Order" OpenType="true">
+        <Key>
+          <PropertyRef Name="DocEntry"/>
+        </Key>
+        <Property Name="CardCode" Type="Edm.String" sap:label="Customer/Vendor Code"/>
+        <Property sap:label="Object: Internal Number" Name="DocEntry" Nullable="false" Type="Edm.Int32"/>
+        <Property Name="DocTotal" Type="Edm.Double" sap:label="Total: incl. Tax"/>
+        <Property Name="DocumentLines" Type="Collection(SAPB1.DocumentLine)"/>
+      </EntityType>
+      <EntityContainer Name="SAPB1">
+        <EntitySet EntityType="SAPB1.Order" Name="Orders" sap:label="Sales Order"/>
+      </EntityContainer>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>
+`;

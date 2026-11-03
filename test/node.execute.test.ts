@@ -1738,3 +1738,32 @@ describe('Resource Locator values', () => {
 		await expect(test.run()).rejects.toThrow('Unknown entity set "NoSuchSet"');
 	});
 });
+
+describe('SAP labels', () => {
+	it.each([
+		['get', { keyFields: mapperValue({ DocEntry: 45 }) }, 'GET /Orders(45)', 200],
+		['getMany', { returnAll: true }, 'GET /Orders', 200],
+		['create', { entityFields: mapperValue({ CardCode: 'C1' }) }, 'POST /Orders', 201],
+		[
+			'update',
+			{ keyFields: mapperValue({ DocEntry: 45 }), entityFields: mapperValue({ CardCode: 'C2' }) },
+			'PATCH /Orders(45)',
+			204,
+		],
+		['delete', { keyFields: mapperValue({ DocEntry: 45 }) }, 'DELETE /Orders(45)', 204],
+	])('are never requested while %s runs', async (operation, extra, route, statusCode) => {
+		const test = harness({
+			routes: {
+				[route]: { statusCode, body: statusCode === 204 ? '' : { value: [], DocEntry: 45 } },
+			},
+			parameters: entitySetParams(operation, extra),
+		});
+
+		await test.run();
+
+		expect(test.http.calls.map((call) => call.url)).not.toContainEqual(
+			expect.stringContaining('annotation='),
+		);
+		expect(test.http.countFor(route)).toBe(1);
+	});
+});

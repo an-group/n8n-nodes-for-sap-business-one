@@ -4,8 +4,9 @@ import type {
 	ResourceMapperFields,
 } from 'n8n-workflow';
 
-import { loadServiceLayerMetadata } from '../helpers/credentials';
+import { loadPropertyLabels, loadServiceLayerMetadata } from '../helpers/credentials';
 import { getEntityPropertyShape } from '../helpers/entityBody';
+import { formatLabel, type LabelMap } from '../helpers/labels';
 import { getLocatorValue, getSelectedEntitySetName } from '../helpers/locator';
 import { classifyEdmType } from '../helpers/odataLiteral';
 import { getExpandedParameter, getOperationParameterShape } from '../helpers/serviceOperation';
@@ -98,6 +99,9 @@ async function getSelectedEntityWithMetadata(
  * properties (e.g. `BoYesNoEnum`) are dropdowns of their member names.
  * Navigation properties are not parsed and never offered.
  *
+ * Each field is shown with its SAP label, as `BP Code (CardCode)`; its `id`,
+ * the key the request is built from, stays the technical name.
+ *
  * Key properties are included for Create (some entity sets require a
  * user-supplied key, e.g. `CardCode`; others are server-assigned, e.g.
  * `DocEntry` — metadata alone does not distinguish these, so the choice is
@@ -120,10 +124,12 @@ export async function getEntityFields(this: ILoadOptionsFunctions): Promise<Reso
 	const { entity, metadata } = selected;
 	const operation = this.getNodeParameter('operation') as string;
 	const keyNames = new Set(entity.keys.map((key) => key.name));
+	const labels = await loadPropertyLabels.call(this, entity.entitySetName);
 
 	const fields = getPropertyFields(
 		entity.properties.filter((property) => operation !== 'update' || !keyNames.has(property.name)),
 		metadata,
+		labels,
 	);
 
 	return { fields };
@@ -133,18 +139,20 @@ export async function getEntityFields(this: ILoadOptionsFunctions): Promise<Reso
  * One mapper field per property of an entity or complex type. Collection and
  * complex properties get a JSON editor (`array`/`object`), see
  * `getEntityPropertyShape`; enum properties a dropdown, see
- * `getSingleValueField`.
+ * `getSingleValueField`. A property is shown with its label when `labels`
+ * has one; the properties of an operation's expanded parameter have none.
  */
 function getPropertyFields(
 	properties: EntityPropertyDefinition[],
 	metadata: ServiceLayerMetadata,
+	labels: LabelMap = new Map(),
 ): ResourceMapperField[] {
 	return properties.map((property) => {
 		const shape = getEntityPropertyShape(property.edmType, metadata);
 
 		return {
 			id: property.name,
-			displayName: property.name,
+			displayName: formatLabel(property.name, labels),
 			...(shape === 'primitive'
 				? getSingleValueField(property.edmType, metadata)
 				: { type: shape }),
@@ -159,8 +167,9 @@ function getPropertyFields(
 /**
  * Populates the Get/Update/Delete `Key Fields` resource-mapper field list
  * from the selected entity set's metadata: one field per key property,
- * labelled with the property's own name (e.g. `ItemCode` for `Items`), so the
- * user never has to know or type a key's name from memory.
+ * labelled with its SAP label and its own name (e.g. `Item No. (ItemCode)`
+ * for `Items`), so the user never has to know or type a key's name from
+ * memory.
  */
 export async function getEntityKeys(this: ILoadOptionsFunctions): Promise<ResourceMapperFields> {
 	const entity = await getSelectedEntity.call(this);
@@ -176,9 +185,11 @@ export async function getEntityKeys(this: ILoadOptionsFunctions): Promise<Resour
 		};
 	}
 
+	const labels = await loadPropertyLabels.call(this, entity.entitySetName);
+
 	const fields: ResourceMapperField[] = entity.keys.map((key) => ({
 		id: key.name,
-		displayName: key.name,
+		displayName: formatLabel(key.name, labels),
 		type: mapEdmTypeToFieldType(key.edmType),
 		required: true,
 		defaultMatch: true,

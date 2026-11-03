@@ -4,23 +4,30 @@ import type {
 	INodeListSearchResult,
 } from 'n8n-workflow';
 
-import { loadServiceLayerMetadata } from '../helpers/credentials';
+import { loadEntitySetLabels, loadServiceLayerMetadata } from '../helpers/credentials';
+import { formatLabel } from '../helpers/labels';
 import { getSelectedEntitySetName } from '../helpers/locator';
 
 /**
  * Fills the `From list` mode of the Entity Set locator from the connected
- * instance's metadata. The metadata is cached per credential, so a search
- * filters the cached list and sends no request of its own.
+ * instance's metadata, each entry shown with its SAP label as
+ * `Business Partners (BusinessPartners)`. The metadata and the labels are
+ * cached per company, so a search filters the cached list and sends no request
+ * of its own. The shown text holds the technical name, so a search finds an
+ * entity set by either; the value is always the technical name.
  */
 export async function searchEntitySets(
 	this: ILoadOptionsFunctions,
 	filter?: string,
 ): Promise<INodeListSearchResult> {
-	const metadata = await loadServiceLayerMetadata.call(this);
+	const [metadata, labels] = await Promise.all([
+		loadServiceLayerMetadata.call(this),
+		loadEntitySetLabels.call(this),
+	]);
 
 	const results = [...metadata.entities.keys()]
-		.sort((a, b) => a.localeCompare(b))
-		.map((name) => ({ name, value: name }));
+		.map((name) => ({ name: formatLabel(name, labels), value: name }))
+		.sort((a, b) => a.name.localeCompare(b.name));
 
 	return { results: filterResults(results, filter) };
 }

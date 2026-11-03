@@ -1,12 +1,13 @@
 import type { ILoadOptionsFunctions, INodePropertyOptions } from 'n8n-workflow';
 
-import { loadServiceLayerMetadata } from '../helpers/credentials';
+import { loadPropertyLabels, loadServiceLayerMetadata } from '../helpers/credentials';
 import {
 	getConditionFieldName,
 	getConditionOperatorSet,
 	getConditionValueKind,
 	getEnumMemberNames,
 } from '../helpers/filterExpression';
+import { formatLabel, type LabelMap } from '../helpers/labels';
 import { getSelectedEntitySetName } from '../helpers/locator';
 import { isSingleValueType } from '../helpers/typeClassification';
 import type { EntityDefinition, EntityPropertyDefinition } from '../helpers/types';
@@ -16,13 +17,16 @@ import type { EntityDefinition, EntityPropertyDefinition } from '../helpers/type
  * selected entity set, collections and complex properties included: a live
  * Service Layer accepts `$select=DocEntry,DocumentLines` and returns the lines
  * in full.
+ *
+ * Every field list shows a field with its SAP label, as `BP Code (CardCode)`,
+ * sorted by that text; the value stays the technical name.
  */
 export async function getSelectableFields(
 	this: ILoadOptionsFunctions,
 ): Promise<INodePropertyOptions[]> {
-	const entity = await loadSelectedEntity.call(this);
+	const selected = await loadSelectedEntityWithLabels.call(this);
 
-	return toFieldOptions(entity?.properties ?? []);
+	return selected === undefined ? [] : toFieldOptions(selected.entity.properties, selected.labels);
 }
 
 /**
@@ -50,16 +54,18 @@ export async function getSortableFields(
 export async function getFilterableFields(
 	this: ILoadOptionsFunctions,
 ): Promise<INodePropertyOptions[]> {
-	const entity = await loadSelectedEntity.call(this);
+	const selected = await loadSelectedEntityWithLabels.call(this);
 
-	if (entity === undefined) {
+	if (selected === undefined) {
 		return [];
 	}
 
+	const { entity, labels } = selected;
 	const metadata = await loadServiceLayerMetadata.call(this);
 
 	return toFieldOptions(
 		entity.properties.filter((property) => isSingleValueType(property.edmType, metadata)),
+		labels,
 	).map((option) => {
 		const property = entity.properties.find((candidate) => candidate.name === option.value);
 		const edmType = property?.edmType ?? '';
@@ -96,19 +102,18 @@ export async function getFilterEnumValues(
 	return getEnumMemberNames(property.edmType, metadata).map((name) => ({ name, value: name }));
 }
 
-async function loadSingleValueFields(
-	this: ILoadOptionsFunctions,
-): Promise<INodePropertyOptions[]> {
-	const entity = await loadSelectedEntity.call(this);
+async function loadSingleValueFields(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+	const selected = await loadSelectedEntityWithLabels.call(this);
 
-	if (entity === undefined) {
+	if (selected === undefined) {
 		return [];
 	}
 
 	const metadata = await loadServiceLayerMetadata.call(this);
 
 	return toFieldOptions(
-		entity.properties.filter((property) => isSingleValueType(property.edmType, metadata)),
+		selected.entity.properties.filter((property) => isSingleValueType(property.edmType, metadata)),
+		selected.labels,
 	);
 }
 
@@ -126,9 +131,32 @@ async function loadSelectedEntity(
 	return metadata.entities.get(entitySetName);
 }
 
-function toFieldOptions(properties: EntityPropertyDefinition[]): INodePropertyOptions[] {
+/**
+ * The selected entity set together with its property labels, loaded side by
+ * side. Only the field lists need labels; the enum value dropdown does not.
+ */
+async function loadSelectedEntityWithLabels(
+	this: ILoadOptionsFunctions,
+): Promise<{ entity: EntityDefinition; labels: LabelMap } | undefined> {
+	const entitySetName = getSelectedEntitySetName(this);
+
+	if (!entitySetName) {
+		return undefined;
+	}
+
+	const [entity, labels] = await Promise.all([
+		loadSelectedEntity.call(this),
+		loadPropertyLabels.call(this, entitySetName),
+	]);
+
+	return entity === undefined ? undefined : { entity, labels };
+}
+
+function toFieldOptions(
+	properties: EntityPropertyDefinition[],
+	labels: LabelMap,
+): INodePropertyOptions[] {
 	return properties
-		.map((property) => property.name)
-		.sort((a, b) => a.localeCompare(b))
-		.map((name) => ({ name, value: name }));
+		.map((property) => ({ name: formatLabel(property.name, labels), value: property.name }))
+		.sort((a, b) => a.name.localeCompare(b.name));
 }
