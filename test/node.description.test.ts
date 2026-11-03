@@ -94,6 +94,44 @@ describe('OData Expression filter', () => {
 	});
 });
 
+describe('Field selection of Get and Get Many', () => {
+	const entitySetProperties = properties.filter((property) =>
+		(property.displayOptions?.show?.resource as string[] | undefined)?.includes('entitySet'),
+	);
+
+	it('is a parameter of its own, not an option', () => {
+		const select = entitySetProperties.find((property) => property.name === 'select');
+
+		expect(select).toMatchObject({
+			displayName: 'Select Field Names or IDs',
+			type: 'multiOptions',
+			typeOptions: { loadOptionsMethod: 'getSelectableFields' },
+		});
+		expect(select?.displayOptions?.show?.operation).toEqual(['get', 'getMany']);
+	});
+
+	it('is optional and returns every field when left empty', () => {
+		const select = entitySetProperties.find((property) => property.name === 'select');
+
+		expect(select?.required).toBeFalsy();
+		expect(select?.default).toEqual([]);
+	});
+
+	it('leaves Get and Get Many without an Options collection', () => {
+		const options = entitySetProperties.filter((property) => property.name === 'options');
+
+		expect(options).toEqual([]);
+	});
+
+	it('comes right after Limit, ahead of the filter and Sort', () => {
+		const names = entitySetProperties.map((property) => property.name);
+
+		expect(names.indexOf('select')).toBe(names.indexOf('limit') + 1);
+		expect(names.indexOf('select')).toBeLessThan(names.indexOf('filterType'));
+		expect(names.indexOf('select')).toBeLessThan(names.indexOf('sort'));
+	});
+});
+
 describe('Resource Locators', () => {
 	const locators: Array<[name: string, searchListMethod: string]> = [
 		['entitySet', 'searchEntitySets'],

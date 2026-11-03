@@ -62,9 +62,12 @@ function getLocatorValue(
 	return context.getNodeParameter(parameterName, itemIndex, '', { extractValue: true }) as string;
 }
 
-/** Reads the Entity Set `Options` collection of `Get` and `Get Many`. */
-function getEntityQueryOptions(context: IExecuteFunctions, itemIndex: number): IDataObject {
-	return context.getNodeParameter('options', itemIndex, {}) as IDataObject;
+/**
+ * Reads `Select Field Names or IDs` of Entity Set `Get` and `Get Many`: a list
+ * from the editor, or whatever an expression returns (see buildEntityQueryString).
+ */
+function getSelectedFields(context: IExecuteFunctions, itemIndex: number): IDataObject[string] {
+	return context.getNodeParameter('select', itemIndex, []) as IDataObject[string];
 }
 
 export class SapBusinessOneServiceLayer implements INodeType {
@@ -383,6 +386,27 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				description: 'Max number of results to return',
 			},
 			{
+				// Placed after Limit so that Get shows it right below Key Fields (the
+				// properties in between are hidden for Get) and Get Many below Limit,
+				// above the filter and Sort.
+				displayName: 'Select Field Names or IDs',
+				name: 'select',
+				type: 'multiOptions',
+				typeOptions: {
+					loadOptionsMethod: 'getSelectableFields',
+					loadOptionsDependsOn: ['entitySet.value'],
+				},
+				default: [],
+				displayOptions: {
+					show: {
+						resource: ['entitySet'],
+						operation: ['get', 'getMany'],
+					},
+				},
+				description:
+					'Leave empty to return every field. Picking only the fields you need keeps the output small, which helps most when the node is used as an AI tool. Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+			},
+			{
 				displayName: 'Filter',
 				name: 'filterType',
 				type: 'options',
@@ -622,34 +646,6 @@ export class SapBusinessOneServiceLayer implements INodeType {
 				description:
 					'OData $filter expression, sent as entered. Strings and enum values go in single quotes (CardType eq \'cCustomer\'), numbers without. Supported: eq, ne, gt, ge, lt, le, and, or, not, parentheses, contains, startswith, endswith.',
 				hint: 'See <a href="https://help.sap.com/docs/SAP_BUSINESS_ONE/f110a154dd0f4c20bf7f3ebca9eeb794/3e5b7d980d99493f9271847450a927ef.html" target="_blank">Query Options</a> in the SAP Business One Service Layer documentation',
-			},
-			{
-				displayName: 'Options',
-				name: 'options',
-				type: 'collection',
-				placeholder: 'Add option',
-				default: {},
-				displayOptions: {
-					show: {
-						resource: ['entitySet'],
-						operation: ['get', 'getMany'],
-					},
-				},
-				options: [
-					{
-						displayName: 'Select Field Names or IDs',
-						name: 'select',
-						type: 'multiOptions',
-						typeOptions: {
-							loadOptionsMethod: 'getSelectableFields',
-							loadOptionsDependsOn: ['entitySet.value'],
-						},
-						default: [],
-						description:
-							'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
-						hint: 'Only these properties are returned ($select). Without a choice, all are returned.',
-					},
-				],
 			},
 			{
 				displayName: 'Sort',
@@ -950,7 +946,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 					// Only Select Field Names or IDs applies to Get; the filter and the sort of Get Many
 					// are parameters of their own and are not read here.
 					const queryString = buildEntityQueryString({
-						select: getEntityQueryOptions(this, itemIndex).select,
+						select: getSelectedFields(this, itemIndex),
 					});
 					const { body } = await serviceLayerApiRequest.call(
 						this,
@@ -967,7 +963,6 @@ export class SapBusinessOneServiceLayer implements INodeType {
 					const limit = returnAll
 						? undefined
 						: (this.getNodeParameter('limit', itemIndex) as number);
-					const options = getEntityQueryOptions(this, itemIndex);
 					const filterType = this.getNodeParameter('filterType', itemIndex, 'none');
 					const filter = buildFilterExpression(
 						this,
@@ -991,7 +986,7 @@ export class SapBusinessOneServiceLayer implements INodeType {
 						entitySetName,
 						limit,
 						buildEntityQueryString({
-							select: options.select,
+							select: getSelectedFields(this, itemIndex),
 							filter,
 							sort: this.getNodeParameter('sort', itemIndex, {}),
 						}),

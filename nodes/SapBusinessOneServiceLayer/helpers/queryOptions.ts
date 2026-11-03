@@ -1,6 +1,6 @@
 import type { IDataObject } from 'n8n-workflow';
 
-/** One row of the `Sort` list in the Entity Set `Options` collection. */
+/** One row of the Entity Set `Sort` list. */
 interface SortFieldEntry {
 	field?: unknown;
 	direction?: unknown;
@@ -38,9 +38,9 @@ function toOrderByList(value: unknown): string[] {
 
 /**
  * Builds the query string for an Entity Set `Get` or `Get Many` from its
- * `Options` collection: `$select`, `$filter`, and `$orderby`, in that order.
- * Returns an empty string when nothing is set, so a request without options is
- * unchanged.
+ * field selection, filter, and sort: `$select`, `$filter`, and `$orderby`, in
+ * that order. Returns an empty string when nothing is set, so a request
+ * without them is unchanged.
  *
  * The string is built here rather than handed to the transport's `qs`, so what
  * reaches the Service Layer is exactly what the unit tests assert. Option names
