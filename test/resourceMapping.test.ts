@@ -17,6 +17,7 @@ import {
 	EDMX_SERVICE_OPERATIONS,
 	EDMX_STRUCTURED_PROPERTIES,
 	EDMX_V1,
+	ORDER_PROPERTY_LABELS_ATTRIBUTE,
 	SYNTHETIC_EDMX_V4,
 } from './fixtures/metadataDocuments';
 import { createTestCredentials } from './helpers/credentials';
@@ -530,5 +531,57 @@ describe('getBoundOperationParameters', () => {
 		const { result } = await boundParametersFor('Orders', '');
 
 		expect(result).toEqual({ fields: [] });
+	});
+});
+
+const ORDER_LABELS_ROUTE =
+	'GET /$metadata?scope=entityset&entityset=Orders&annotation=label';
+
+describe('resource mapper with SAP labels', () => {
+	function labelled(parameters: Record<string, unknown>, labelsResponse?: FakeResponse) {
+		return scenario({
+			metadataXml: EDMX_STRUCTURED_PROPERTIES,
+			parameters,
+			routes: {
+				[ORDER_LABELS_ROUTE]: labelsResponse ?? {
+					statusCode: 200,
+					body: ORDER_PROPERTY_LABELS_ATTRIBUTE,
+				},
+			},
+		}).context;
+	}
+
+	it('shows each Create field as "Label (Name)" and keeps the name as its id', async () => {
+		const { fields } = await getEntityFields.call(
+			labelled({ entitySet: 'Orders', operation: 'create' }),
+		);
+
+		expect(fields.find((field) => field.id === 'CardCode')?.displayName).toBe(
+			'Customer/Vendor Code (CardCode)',
+		);
+		expect(fields.find((field) => field.id === 'DocEntry')?.displayName).toBe(
+			'Object: Internal Number (DocEntry)',
+		);
+		// No label on an older server: the collection keeps its name.
+		expect(fields.find((field) => field.id === 'DocumentLines')?.displayName).toBe('DocumentLines');
+	});
+
+	it('labels the Key Fields', async () => {
+		await expect(getEntityKeys.call(labelled({ entitySet: 'Orders' }))).resolves.toEqual({
+			fields: [
+				{ ...keyField('DocEntry', 'number'), displayName: 'Object: Internal Number (DocEntry)' },
+			],
+		});
+	});
+
+	it('keeps the technical names when the server rejects the label request', async () => {
+		const { fields } = await getEntityFields.call(
+			labelled(
+				{ entitySet: 'Orders', operation: 'update' },
+				{ statusCode: 500, body: { error: { code: -1 } } },
+			),
+		);
+
+		expect(fields.every((field) => field.displayName === field.id)).toBe(true);
 	});
 });

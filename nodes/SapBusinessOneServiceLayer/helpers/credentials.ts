@@ -1,3 +1,4 @@
+import { getEntitySetLabels, getPropertyLabels, type LabelMap } from './labels';
 import { getServiceLayerMetadata } from './metadata';
 import type {
 	ServiceLayerCredentialContext,
@@ -39,4 +40,28 @@ export async function loadServiceLayerMetadata(
 	const { credentials, credentialId } = await getServiceLayerCredentials.call(this, itemIndex);
 
 	return await getServiceLayerMetadata.call(this, credentials, credentialId);
+}
+
+/**
+ * Resolves the credentials and returns the cached entity set labels. Only the
+ * editor's lists call this; `execute()` never needs a label. Never rejects for
+ * a failed label request (see helpers/labels.ts).
+ */
+export async function loadEntitySetLabels(this: ServiceLayerCredentialContext): Promise<LabelMap> {
+	const { credentials, credentialId } = await getServiceLayerCredentials.call(this);
+
+	return await getEntitySetLabels.call(this, credentials, credentialId);
+}
+
+/**
+ * Resolves the credentials and returns the cached property labels of one
+ * entity set, for the editor's field lists and resource mapper.
+ */
+export async function loadPropertyLabels(
+	this: ServiceLayerCredentialContext,
+	entitySetName: string,
+): Promise<LabelMap> {
+	const { credentials, credentialId } = await getServiceLayerCredentials.call(this);
+
+	return await getPropertyLabels.call(this, credentials, credentialId, entitySetName);
 }

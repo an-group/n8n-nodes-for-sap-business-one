@@ -12,6 +12,8 @@ import {
 	EDMX_EMPTY,
 	EDMX_SERVICE_OPERATIONS,
 	EDMX_V1,
+	ENTITY_SET_LABELS_ANNOTATED,
+	ENTITY_SET_LABELS_ATTRIBUTE,
 	SYNTHETIC_EDMX_V4,
 } from './fixtures/metadataDocuments';
 import { createTestCredentials } from './helpers/credentials';
@@ -111,8 +113,10 @@ describe('searchEntitySets', () => {
 		await searchEntitySets.call(context);
 
 		// There is no item in a list search context. Threading one through would
-		// only break once the node ran inside n8n.
+		// only break once the node ran inside n8n. Metadata and labels each
+		// resolve the credentials once.
 		expect(credentialCalls).toEqual([
+			{ type: SERVICE_LAYER_CREDENTIAL_NAME, itemIndex: undefined },
 			{ type: SERVICE_LAYER_CREDENTIAL_NAME, itemIndex: undefined },
 		]);
 	});
@@ -151,6 +155,86 @@ describe('searchEntitySets', () => {
 		expect(text).not.toContain(credentials.password);
 		expect(text).not.toContain('B1SESSION');
 		expect(text).not.toContain(credentials.baseUrl);
+	});
+});
+
+const ENTITY_SET_LABELS_ROUTE = 'GET /$metadata?scope=entityset&annotation=label';
+
+describe('searchEntitySets with SAP labels', () => {
+	function labelled(labelsXml: string = ENTITY_SET_LABELS_ANNOTATED) {
+		return scenario({
+			routes: { [ENTITY_SET_LABELS_ROUTE]: { statusCode: 200, body: labelsXml } },
+		});
+	}
+
+	it.each([
+		['Common.Label annotations', ENTITY_SET_LABELS_ANNOTATED],
+		['sap:label attributes', ENTITY_SET_LABELS_ATTRIBUTE],
+	])(
+		'shows each entity set as "Label (Name)", sorted by that text, from %s',
+		async (_format, labelsXml) => {
+			const { context } = labelled(labelsXml);
+
+			// Items is labelled with its own name and Ghosts not at all: both show
+			// only the name. SalesTaxAuthorities has an empty label.
+			await expect(searchEntitySets.call(context)).resolves.toEqual({
+				results: [
+					{ name: 'Ghosts', value: 'Ghosts' },
+					{ name: 'Items', value: 'Items' },
+					{
+						name: 'Object: Berichte & Auswertungen für Verkäufe (Reports)',
+						value: 'Reports',
+					},
+					{ name: 'Sales Order (Orders)', value: 'Orders' },
+					{ name: 'SalesTaxAuthorities', value: 'SalesTaxAuthorities' },
+				],
+			});
+		},
+	);
+
+	it('finds an entity set by its label and by its technical name', async () => {
+		const { context } = labelled();
+
+		const byLabel = await searchEntitySets.call(context, 'sales order');
+		const byName = await searchEntitySets.call(context, 'orders');
+
+		expect(byLabel.results.map((result) => result.value)).toEqual(['Orders']);
+		expect(byName.results.map((result) => result.value)).toEqual(['Orders']);
+	});
+
+	it('requests the labels once and serves a repeat search from the cache', async () => {
+		const { context, http } = labelled();
+
+		await searchEntitySets.call(context);
+		await searchEntitySets.call(context, 'Ord');
+
+		expect(http.countFor(ENTITY_SET_LABELS_ROUTE)).toBe(1);
+		expect(http.countFor('POST /Login')).toBe(1);
+	});
+
+	it('falls back to the technical names when the server rejects the label request', async () => {
+		const { context } = scenario({
+			routes: { [ENTITY_SET_LABELS_ROUTE]: { statusCode: 400, body: { error: { code: -1 } } } },
+		});
+
+		const { results } = await searchEntitySets.call(context);
+
+		expect(results.map((result) => result.name)).toEqual([
+			'Ghosts',
+			'Items',
+			'Orders',
+			'Reports',
+			'SalesTaxAuthorities',
+		]);
+	});
+
+	it('still fails on unreadable metadata, whatever the labels', async () => {
+		const { context } = scenario({
+			metadataXml: EDMX_V1,
+			routes: { [ENTITY_SET_LABELS_ROUTE]: { statusCode: 200, body: ENTITY_SET_LABELS_ANNOTATED } },
+		});
+
+		await expect(searchEntitySets.call(context)).rejects.toThrow(NodeOperationError);
 	});
 });
 

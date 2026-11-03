@@ -9,6 +9,7 @@ import {
 import {
 	EDMX_FILTERABLE_PROPERTIES,
 	EDMX_STRUCTURED_PROPERTIES,
+	ORDER_PROPERTY_LABELS_ANNOTATED,
 	SYNTHETIC_EDMX_V4,
 } from './fixtures/metadataDocuments';
 import { createTestCredentials } from './helpers/credentials';
@@ -216,5 +217,93 @@ describe('getFilterEnumValues', () => {
 
 		expect(options).toEqual([]);
 		expect(http.calls).toHaveLength(0);
+	});
+});
+
+const ORDER_LABELS_ROUTE =
+	'GET /$metadata?scope=entityset&entityset=Orders&annotation=label';
+
+describe('field lists with SAP labels', () => {
+	function labelled(parameters: Record<string, unknown>, labelsResponse?: FakeResponse) {
+		return scenario({
+			metadataXml: EDMX_FILTERABLE_PROPERTIES,
+			parameters,
+			routes: {
+				[ORDER_LABELS_ROUTE]: labelsResponse ?? {
+					statusCode: 200,
+					body: ORDER_PROPERTY_LABELS_ANNOTATED,
+				},
+			},
+		});
+	}
+
+	it('shows each field as "Label (Name)", sorted by that text, with the name as value', async () => {
+		const { context } = labelled({ entitySet: 'Orders' });
+
+		const options = await getSelectableFields.call(context);
+
+		expect(options.slice(0, 3)).toEqual([
+			{ name: 'AddressExtension', value: 'AddressExtension' },
+			{ name: 'Approver', value: 'Approver' },
+			{ name: 'Customer/Vendor Code (CardCode)', value: 'CardCode' },
+		]);
+		expect(options).toContainEqual({ name: 'Internal Number (DocEntry)', value: 'DocEntry' });
+		expect(options).toContainEqual({
+			name: 'Sales Order - Rows (DocumentLines)',
+			value: 'DocumentLines',
+		});
+		// DocTotal has no label and keeps its name.
+		expect(options).toContainEqual({ name: 'DocTotal', value: 'DocTotal' });
+	});
+
+	it('labels the Sort fields', async () => {
+		const { context } = labelled({ entitySet: 'Orders' });
+
+		const options = await getSortableFields.call(context);
+
+		expect(options).toContainEqual({ name: 'Internal Number (DocEntry)', value: 'DocEntry' });
+		expect(options.map((option) => option.value)).not.toContain('DocumentLines');
+	});
+
+	it('labels the filter fields and keeps the kind and operators in the value', async () => {
+		const { context } = labelled({ entitySet: 'Orders' });
+
+		const options = await getFilterableFields.call(context);
+
+		expect(options).toContainEqual({
+			name: 'Customer/Vendor Code (CardCode)',
+			value: 'CardCode|text|text',
+		});
+		expect(options).toContainEqual({ name: 'DocDate', value: 'DocDate|date|ordered' });
+	});
+
+	it('requests the labels of the entity set once for every list', async () => {
+		const { context, http } = labelled({ entitySet: 'Orders' });
+
+		await getSelectableFields.call(context);
+		await getSortableFields.call(context);
+		await getFilterableFields.call(context);
+
+		expect(http.countFor(ORDER_LABELS_ROUTE)).toBe(1);
+		expect(http.countFor('GET /$metadata')).toBe(1);
+	});
+
+	it('falls back to the technical names when the server rejects the label request', async () => {
+		const { context } = labelled(
+			{ entitySet: 'Orders' },
+			{ statusCode: 400, body: { error: { code: -1 } } },
+		);
+
+		const options = await getSelectableFields.call(context);
+
+		expect(options.every((option) => option.name === option.value)).toBe(true);
+	});
+
+	it('requests no labels for the enum value dropdown', async () => {
+		const { context, http } = labelled({ entitySet: 'Orders', '&field': 'DocumentStatus|enum' });
+
+		await getFilterEnumValues.call(context);
+
+		expect(http.countFor(ORDER_LABELS_ROUTE)).toBe(0);
 	});
 });

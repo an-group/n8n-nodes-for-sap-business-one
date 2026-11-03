@@ -58,6 +58,8 @@ Planned for later releases:
 
 Pick the **Entity Set** from a searchable list (**From List**, the default) or enter its name (**By Name**, also as an expression), for example `Orders`.
 
+The lists show the SAP Business One labels next to the technical names, as `Label (TechnicalName)`: `Sales Order (Orders)` in the Entity Set list, `Posting Date (DocDate)` in the field lists and the field mappers. The search in the Entity Set list matches both. The labels are the wording of the SAP Business One client, so they can differ from the technical name (`Goods Receipt PO (PurchaseDeliveryNotes)`), and they follow the language of the SAP user. Where the Service Layer has no label, or the labels cannot be loaded, the technical name is shown alone. The node always stores and sends the technical name, so a different label never changes a workflow.
+
 | Operation | What it does |
 |---|---|
 | **Get** | fetch one entity by its key, optionally only some of its fields |
@@ -71,7 +73,7 @@ Pick the **Entity Set** from a searchable list (**From List**, the default) or e
 
 Used by Get, Update, Delete, and Execute Action or Function.
 
-- One input per key property, filled from the metadata and labelled with the property's own name: a single `ItemCode` field for `Items`, or `ItemCode`, `CardCode`, and `Substitute` for the three-part key of `AlternateCatNum`.
+- One input per key property, filled from the metadata and labelled with its SAP label and name: a single `Item No. (ItemCode)` field for `Items`, or `Item No. (ItemCode)`, `BP Code (CardCode)`, and `BP Catalog Number (Substitute)` for the three-part key of `AlternateCatNum`.
 - Every key field is required; leaving one unset is rejected before any request is sent.
 
 #### Fields
